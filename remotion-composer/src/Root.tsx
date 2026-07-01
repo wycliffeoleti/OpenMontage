@@ -1,5 +1,6 @@
 import { Composition, CalculateMetadataFunction } from "remotion";
 import { Explainer, ExplainerProps } from "./Explainer";
+import { ExplainerStory, calculateStoryMetadata } from "./ExplainerStory";
 import {
   CinematicRenderer,
   calculateCinematicMetadata,
@@ -164,6 +165,20 @@ export const Root: React.FC = () => {
           audio: {},
         }}
         calculateMetadata={calculateMetadata}
+      />
+      <Composition
+        id="ExplainerStory"
+        component={ExplainerStory}
+        durationInFrames={30 * 30}
+        fps={30}
+        width={1080}
+        height={1920}
+        defaultProps={{
+          beats: [],
+          captions: [],
+          audio: {},
+        }}
+        calculateMetadata={calculateStoryMetadata}
       />
       <Composition
         id="CinematicRenderer"
