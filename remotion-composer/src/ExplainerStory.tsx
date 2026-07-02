@@ -497,7 +497,17 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
         }}
       >
         {presenterSrc ? (
-          <Img src={resolveAsset(presenterSrc)} style={{ width: 460, height: 300, objectFit: "cover", borderRadius: 32 }} />
+          /\.(mp4|webm|mov)$/i.test(presenterSrc) ? (
+            // The digital clone: a lip-synced talking-head clip (muted — the
+            // composition's narration track IS its voice).
+            <OffthreadVideo
+              muted
+              src={resolveAsset(presenterSrc)}
+              style={{ width: 500, height: 500, objectFit: "cover", borderRadius: 40 }}
+            />
+          ) : (
+            <Img src={resolveAsset(presenterSrc)} style={{ width: 460, height: 300, objectFit: "cover", borderRadius: 32 }} />
+          )
         ) : (
           <AnimatedHost words={captions} name={presenterName} accent={accent} />
         )}
