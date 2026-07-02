@@ -66,7 +66,31 @@ export type SceneContent =
       type: "diagram";
       nodes: Array<{ label: string }>;  // revealed in order, arrows draw between
       column?: boolean;                 // stack vertically (default: row for ≤3 nodes)
+    }
+  | {
+      type: "staged";
+      elements: StagedElement[];        // the free-form visual stage (see below)
     };
+
+// One prop on the stage: a drawable icon, a labeled entity badge, a keyword
+// label, a fan of photo cards, or director-supplied raw SVG paths. Positioned
+// in percent of the canvas, entering/exiting on its own schedule — the
+// composable language that lets ANY sentence be staged visually.
+export interface StagedElement {
+  kind: "icon" | "entity" | "label" | "photos" | "path";
+  icon?: string;           // kind=icon: a key of ICON_LIBRARY (e.g. "jail", "lock", "apple")
+  name?: string;           // kind=entity/label: the text ("Fable 5", "BANNED")
+  d?: string[];            // kind=path: raw SVG path data (100x100 viewBox), drawn on
+  x: number;               // center, percent of canvas width (0-100)
+  y: number;               // center, percent of canvas height (0-100)
+  scale?: number;          // 1 = icon 260px tall / entity natural size
+  color?: string;          // stroke/fill accent for this element
+  at?: number;             // seconds: when it enters (default 0)
+  enter?: "draw" | "pop" | "slide-left" | "slide-right" | "rise" | "fade";
+  until?: number;          // seconds: when it exits (default: never)
+  exit?: "fade" | "drop" | "fly-right";
+  wiggle?: boolean;        // gentle idle rotation
+}
 
 export interface Scene {
   background?: SceneBackground;
@@ -896,6 +920,203 @@ const DiagramScene: React.FC<{ nodes: Array<{ label: string }>; column?: boolean
   );
 };
 
+// --- the STAGE: composable line-art props, entities, labels, photo fans ------
+// Every icon is stroke line-art in a 100x100 viewBox so it can DRAW ITSELF on.
+export const ICON_LIBRARY: Record<string, string[]> = {
+  jail: ["M 8 6 H 92", "M 8 94 H 92", "M 15 6 V 94", "M 32.5 6 V 94", "M 50 6 V 94", "M 67.5 6 V 94", "M 85 6 V 94"],
+  lock: ["M 32 45 V 30 A 18 18 0 0 1 68 30 V 45",
+         "M 26 45 H 74 A 6 6 0 0 1 80 51 V 82 A 6 6 0 0 1 74 88 H 26 A 6 6 0 0 1 20 82 V 51 A 6 6 0 0 1 26 45 Z",
+         "M 50 58 a 5 5 0 1 0 0.01 0", "M 50 63 V 74"],
+  apple: ["M 50 32 C 30 20 12 34 14 56 C 16 78 34 92 50 86 C 66 92 84 78 86 56 C 88 34 70 20 50 32",
+          "M 50 30 Q 52 20 60 14", "M 60 22 Q 74 14 80 22 Q 72 30 60 22"],
+  brain: ["M 35 30 A 14 14 0 0 1 62 26 A 13 13 0 0 1 80 40 A 13 13 0 0 1 80 62 A 14 14 0 0 1 60 76 A 14 14 0 0 1 34 70 A 15 15 0 0 1 26 46 A 13 13 0 0 1 35 30",
+          "M 42 40 Q 50 44 46 52", "M 58 36 Q 64 44 58 50", "M 50 58 Q 58 60 62 66"],
+  person: ["M 50 30 a 12 12 0 1 0 0.01 0", "M 26 84 Q 26 58 50 58 Q 74 58 74 84"],
+  photo: ["M 16 20 H 84 V 80 H 16 Z", "M 22 72 L 42 48 L 56 62 L 66 52 L 78 72", "M 66 34 a 7 7 0 1 0 0.01 0"],
+  magnifier: ["M 42 24 A 22 22 0 1 0 42.01 24", "M 58 62 L 82 86"],
+  cloud: ["M 28 66 A 14 14 0 0 1 30 39 A 18 18 0 0 1 64 33 A 14 14 0 0 1 74 66 Z"],
+  chip: ["M 30 30 H 70 V 70 H 30 Z", "M 42 42 H 58 V 58 H 42 Z",
+         "M 38 30 V 18", "M 50 30 V 18", "M 62 30 V 18", "M 38 70 V 82", "M 50 70 V 82", "M 62 70 V 82",
+         "M 30 38 H 18", "M 30 50 H 18", "M 30 62 H 18", "M 70 38 H 82", "M 70 50 H 82", "M 70 62 H 82"],
+  laptop: ["M 24 24 H 76 V 62 H 24 Z", "M 16 70 H 84 L 90 80 H 10 Z"],
+  book: ["M 50 26 Q 34 18 18 24 V 74 Q 34 68 50 76 Q 66 68 82 74 V 24 Q 66 18 50 26 V 74"],
+  shield: ["M 50 14 L 82 26 V 50 Q 82 76 50 88 Q 18 76 18 50 V 26 Z", "M 36 50 L 46 60 L 66 38"],
+  star: ["M 50 14 L 59 38 L 85 38 L 64 53 L 72 78 L 50 63 L 28 78 L 36 53 L 15 38 L 41 38 Z"],
+  check: ["M 24 52 L 42 70 L 78 32"],
+  cross: ["M 28 28 L 72 72", "M 72 28 L 28 72"],
+  arrow: ["M 14 50 H 78", "M 62 34 L 82 50 L 62 66"],
+  bulb: ["M 50 16 a 22 22 0 0 1 12 40 q -4 4 -4 10 H 42 q 0 -6 -4 -10 a 22 22 0 0 1 12 -40",
+         "M 42 74 H 58", "M 44 82 H 56"],
+  bubble: ["M 20 24 H 80 V 62 H 46 L 32 76 V 62 H 20 Z"],
+  eye: ["M 14 50 Q 50 20 86 50 Q 50 80 14 50", "M 50 40 a 10 10 0 1 0 0.01 0"],
+  globe: ["M 50 16 a 34 34 0 1 0 0.01 0", "M 16 50 H 84", "M 50 16 Q 30 50 50 84", "M 50 16 Q 70 50 50 84"],
+  robot: ["M 30 34 H 70 V 68 H 30 Z", "M 42 48 a 3 3 0 1 0 0.01 0", "M 58 48 a 3 3 0 1 0 0.01 0",
+          "M 50 34 V 22", "M 50 18 a 4 4 0 1 0 0.01 0", "M 42 60 H 58"],
+  clock: ["M 50 14 a 36 36 0 1 0 0.01 0", "M 50 50 V 28", "M 50 50 L 66 58"],
+  warning: ["M 50 16 L 88 82 H 12 Z", "M 50 38 V 58", "M 50 66 V 69"],
+};
+
+const StagedItem: React.FC<{ el: StagedElement; accent: string }> = ({ el, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const atF = Math.round((el.at ?? 0) * fps);
+  const t = frame - atF;
+  if (t < 0) return null;
+
+  const enter = el.enter ?? (el.kind === "icon" || el.kind === "path" ? "draw" : "pop");
+  const p = spring({ frame: t, fps, config: { damping: 13, stiffness: 110 } });
+  const drawP = interpolate(t, [0, 0.7 * fps], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+  const fadeP = interpolate(t, [0, 0.3 * fps], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+
+  let opacity = fadeP;
+  let tx = 0, ty = 0, sc = 1;
+  if (enter === "pop") sc = p;
+  else if (enter === "slide-left") tx = -220 * (1 - p);
+  else if (enter === "slide-right") tx = 220 * (1 - p);
+  else if (enter === "rise") ty = 70 * (1 - p);
+  else if (enter === "draw") opacity = 1;
+
+  if (el.until !== undefined) {
+    const outT = frame - Math.round(el.until * fps);
+    if (outT >= 0) {
+      const q = interpolate(outT, [0, 0.35 * fps], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
+      if (q >= 1) return null;
+      opacity *= 1 - q;
+      if (el.exit === "drop") ty += 90 * q;
+      if (el.exit === "fly-right") tx += 300 * q;
+    }
+  }
+
+  const wig = el.wiggle ? Math.sin((frame / fps) * 2.4 + el.x) * 2.5 : 0;
+  const scale = el.scale ?? 1;
+  const color = el.color || "#5EEAD4";
+
+  const style: React.CSSProperties = {
+    position: "absolute",
+    // CSS percent = relative to the SCENE CANVAS (the top band), not the full frame
+    left: `${el.x}%`,
+    top: `${el.y}%`,
+    transform: `translate(-50%, -50%) translate(${tx}px, ${ty}px) scale(${sc}) rotate(${wig}deg)`,
+    opacity,
+  };
+
+  if (el.kind === "icon" || el.kind === "path") {
+    const paths = el.kind === "icon" ? ICON_LIBRARY[el.icon || ""] || ICON_LIBRARY.star : el.d || [];
+    const size = 260 * scale;
+    return (
+      <div style={style}>
+        <svg
+          width={size}
+          height={size}
+          viewBox="0 0 100 100"
+          style={{ overflow: "visible", filter: `drop-shadow(0 0 10px ${color}66)` }}
+        >
+          {paths.map((d, i) => (
+            <path
+              key={i}
+              d={d}
+              fill="none"
+              stroke={color}
+              strokeWidth={4.5}
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              pathLength={1}
+              strokeDasharray={1}
+              strokeDashoffset={enter === "draw" ? 1 - Math.min(1, Math.max(0, drawP * paths.length - i * 0.6)) : 0}
+            />
+          ))}
+        </svg>
+      </div>
+    );
+  }
+
+  if (el.kind === "entity") {
+    return (
+      <div
+        style={{
+          ...style,
+          borderRadius: 22,
+          background: "#0E1B33",
+          border: `2.5px solid ${el.color || accent}`,
+          boxShadow: `0 0 34px ${(el.color || accent)}44, 0 18px 50px rgba(0,0,0,0.45)`,
+          padding: `${18 * scale}px ${34 * scale}px`,
+        }}
+      >
+        <div style={{ fontFamily, fontSize: 46 * scale, fontWeight: 700, color: "#F8FAFC", whiteSpace: "nowrap" }}>
+          {el.name}
+        </div>
+      </div>
+    );
+  }
+
+  if (el.kind === "label") {
+    return (
+      <div
+        style={{
+          ...style,
+          fontFamily,
+          fontSize: 40 * scale,
+          fontWeight: 800,
+          letterSpacing: 5,
+          textTransform: "uppercase",
+          color,
+          whiteSpace: "nowrap",
+          textShadow: `0 0 28px ${color}66`,
+        }}
+      >
+        {el.name}
+      </div>
+    );
+  }
+
+  // photos: a fan of framed photo cards popping in one after another
+  const cards = Array.from({ length: 6 }, (_, i) => {
+    const r1 = seededRandom(11 + i * 3.7 + el.x);
+    const r2 = seededRandom(53 + i * 5.1 + el.y);
+    const pop = spring({ frame: t - Math.round(i * 0.12 * fps), fps, config: { damping: 12, stiffness: 120 } });
+    return { dx: (r1 - 0.5) * 300 * scale, dy: (r2 - 0.5) * 190 * scale, rot: (r1 - 0.5) * 26, pop };
+  });
+  return (
+    <div style={style}>
+      {cards.map((c2, i) => (
+        <div
+          key={i}
+          style={{
+            position: "absolute",
+            left: c2.dx,
+            top: c2.dy,
+            transform: `translate(-50%, -50%) rotate(${c2.rot}deg) scale(${c2.pop})`,
+            opacity: c2.pop,
+            width: 170 * scale,
+            height: 128 * scale,
+            background: "#0E1B33",
+            border: "3px solid rgba(248,250,252,0.85)",
+            borderRadius: 8,
+            boxShadow: "0 14px 34px rgba(0,0,0,0.5)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+        >
+          <svg width={90 * scale} height={68 * scale} viewBox="0 0 100 76">
+            <path d="M 8 66 L 34 34 L 52 52 L 64 40 L 92 66" fill="none" stroke="#5EEAD4" strokeWidth={5}
+                  strokeLinecap="round" strokeLinejoin="round" />
+            <circle cx={72} cy={20} r={8} fill="#F0B429" />
+          </svg>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+const StagedScene: React.FC<{ elements: StagedElement[]; accent: string }> = ({ elements, accent }) => (
+  <AbsoluteFill>
+    {elements.map((el, i) => (
+      <StagedItem key={i} el={el} accent={accent} />
+    ))}
+  </AbsoluteFill>
+);
+
 // --- the canvas: backdrop -> content -> vignette ------------------------------
 export const SceneCanvas: React.FC<{ scene: Scene; accent: string }> = ({ scene, accent }) => {
   const c = scene.content;
@@ -930,6 +1151,7 @@ export const SceneCanvas: React.FC<{ scene: Scene; accent: string }> = ({ scene,
       )}
       {c.type === "stat" && <StatScene value={c.value} label={c.label} accent={accent} />}
       {c.type === "diagram" && <DiagramScene nodes={c.nodes} column={c.column} accent={accent} />}
+      {c.type === "staged" && <StagedScene elements={c.elements} accent={accent} />}
       <Vignette />
     </AbsoluteFill>
   );
