@@ -42,6 +42,30 @@ export type SceneContent =
       type: "network";
       nodeCount?: number;
       label?: string;
+    }
+  | {
+      type: "chat_window";
+      title?: string;    // mac-window title bar text (default "Ask AI")
+      question: string;  // typed out character by character
+      answer: string;    // streams in word by word after a "thinking" pause
+    }
+  | {
+      type: "compare";
+      title?: string;
+      leftLabel: string;
+      leftItems: string[];
+      rightLabel: string;
+      rightItems: string[];
+    }
+  | {
+      type: "stat";
+      value: string; // leading number counts up ("83°C", "6x", "1,000,000" → digits animate)
+      label?: string;
+    }
+  | {
+      type: "diagram";
+      nodes: Array<{ label: string }>;  // revealed in order, arrows draw between
+      column?: boolean;                 // stack vertically (default: row for ≤3 nodes)
     };
 
 export interface Scene {
@@ -519,6 +543,359 @@ const NetworkScene: React.FC<{ nodeCount?: number; label?: string }> = ({ nodeCo
   );
 };
 
+// --- chat window: mac chrome, typed question, streaming answer ---------------
+const MONO = "'SF Mono', 'Cascadia Code', Menlo, Consolas, monospace";
+
+const ChatWindow: React.FC<{ title?: string; question: string; answer: string; accent: string }> = ({
+  title = "Ask AI",
+  question,
+  answer,
+  accent,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const appear = spring({ frame, fps, config: { damping: 14, stiffness: 110 } });
+
+  const typeStart = Math.round(0.5 * fps);
+  const charsPerFrame = 30 / fps; // ~30 chars/s typing feel
+  const charsShown = Math.max(0, Math.min(question.length, Math.floor((frame - typeStart) * charsPerFrame)));
+  const typingDone = charsShown >= question.length;
+  const typeEndFrame = typeStart + Math.ceil(question.length / charsPerFrame);
+
+  const thinkFrames = Math.round(0.7 * fps);
+  const answerStart = typeEndFrame + thinkFrames;
+  const answerWords = answer.split(/\s+/);
+  const wordsShown = Math.max(0, Math.floor((frame - answerStart) / Math.max(1, Math.round(0.085 * fps))));
+  const shownAnswer = answerWords.slice(0, wordsShown).join(" ");
+  const thinking = typingDone && frame >= typeEndFrame && frame < answerStart;
+
+  const cursorOn = Math.floor(frame / (0.4 * fps)) % 2 === 0;
+
+  return (
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
+      <div
+        style={{
+          width: 880,
+          minHeight: 340,
+          borderRadius: 18,
+          background: "#0D1526",
+          border: "1.5px solid rgba(148,163,184,0.18)",
+          boxShadow: `0 34px 90px rgba(0,0,0,0.55), 0 0 60px ${accent}14`,
+          overflow: "hidden",
+          transform: `scale(${0.92 + appear * 0.08}) translateY(${(1 - appear) * 30}px)`,
+          opacity: appear,
+        }}
+      >
+        <div
+          style={{
+            height: 58,
+            background: "#131D33",
+            borderBottom: "1px solid rgba(148,163,184,0.14)",
+            display: "flex",
+            alignItems: "center",
+            padding: "0 24px",
+            gap: 10,
+          }}
+        >
+          <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#FF5F57" }} />
+          <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#FEBC2E" }} />
+          <div style={{ width: 16, height: 16, borderRadius: "50%", background: "#28C840" }} />
+          <div
+            style={{
+              flex: 1,
+              textAlign: "center",
+              fontFamily: MONO,
+              fontSize: 24,
+              color: "rgba(203,213,225,0.75)",
+              marginRight: 68,
+            }}
+          >
+            {title}
+          </div>
+        </div>
+        <div style={{ padding: "34px 38px", fontFamily: MONO, fontSize: 30, lineHeight: 1.65 }}>
+          <div style={{ color: "#E2E8F0" }}>
+            <span style={{ color: accent, fontWeight: 700 }}>❯ You: </span>
+            {question.slice(0, charsShown)}
+            {!typingDone && cursorOn && <span style={{ color: accent }}>▌</span>}
+          </div>
+          {thinking && (
+            <div style={{ marginTop: 26, color: "rgba(203,213,225,0.6)" }}>
+              {Array.from({ length: 3 }, (_, i) => (
+                <span
+                  key={i}
+                  style={{
+                    display: "inline-block",
+                    width: 13,
+                    height: 13,
+                    borderRadius: "50%",
+                    background: "rgba(203,213,225,0.6)",
+                    marginRight: 10,
+                    transform: `translateY(${Math.sin((frame / fps) * 6 + i * 0.9) * 5}px)`,
+                  }}
+                />
+              ))}
+            </div>
+          )}
+          {wordsShown > 0 && (
+            <div style={{ marginTop: 26, color: "#CBD5E1" }}>
+              <span style={{ color: "#F0B429", fontWeight: 700 }}>✦ AI: </span>
+              {shownAnswer}
+              {wordsShown < answerWords.length && cursorOn && <span style={{ color: "#F0B429" }}>▌</span>}
+            </div>
+          )}
+        </div>
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// --- compare: two panels slide in, items stagger ------------------------------
+const ComparePanel: React.FC<{
+  label: string;
+  items: string[];
+  color: string;
+  fromX: number;
+  delayS: number;
+}> = ({ label, items, color, fromX, delayS }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const s = spring({ frame: frame - Math.round(delayS * fps), fps, config: { damping: 14, stiffness: 100 } });
+  return (
+    <div
+      style={{
+        width: 452,
+        borderRadius: 20,
+        background: "#0D1526",
+        border: `2px solid ${color}55`,
+        boxShadow: `0 24px 70px rgba(0,0,0,0.45), 0 0 44px ${color}1A`,
+        padding: "30px 32px 34px",
+        transform: `translateX(${(1 - s) * fromX}px)`,
+        opacity: s,
+      }}
+    >
+      <div
+        style={{
+          fontFamily,
+          fontSize: 33,
+          fontWeight: 700,
+          color,
+          marginBottom: 20,
+          textShadow: `0 0 26px ${color}55`,
+        }}
+      >
+        {label}
+      </div>
+      {items.map((it, i) => {
+        const op = interpolate(frame, [(delayS + 0.45 + i * 0.22) * fps, (delayS + 0.75 + i * 0.22) * fps], [0, 1], {
+          extrapolateLeft: "clamp",
+          extrapolateRight: "clamp",
+        });
+        return (
+          <div
+            key={i}
+            style={{
+              display: "flex",
+              gap: 14,
+              alignItems: "flex-start",
+              marginTop: i === 0 ? 0 : 16,
+              opacity: op,
+            }}
+          >
+            <div style={{ width: 10, height: 10, borderRadius: "50%", background: color, marginTop: 15, flexShrink: 0 }} />
+            <div style={{ fontFamily, fontSize: 29, fontWeight: 500, color: "#E2E8F0", lineHeight: 1.4 }}>{it}</div>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
+
+const CompareScene: React.FC<{
+  title?: string;
+  leftLabel: string;
+  leftItems: string[];
+  rightLabel: string;
+  rightItems: string[];
+  accent: string;
+}> = ({ title, leftLabel, leftItems, rightLabel, rightItems, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  return (
+    <AbsoluteFill style={{ flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 36 }}>
+      {title && (
+        <div
+          style={{
+            fontFamily,
+            fontSize: 46,
+            fontWeight: 700,
+            color: "#F8FAFC",
+            textShadow: "0 0 26px rgba(248,250,252,0.2)",
+            opacity: interpolate(frame, [0, 0.35 * fps], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" }),
+          }}
+        >
+          {title}
+        </div>
+      )}
+      <div style={{ display: "flex", gap: 36 }}>
+        <ComparePanel label={leftLabel} items={leftItems} color={accent} fromX={-70} delayS={0.15} />
+        <ComparePanel label={rightLabel} items={rightItems} color="#F0B429" fromX={70} delayS={0.35} />
+      </div>
+    </AbsoluteFill>
+  );
+};
+
+// --- stat: one big number counts up -------------------------------------------
+const StatScene: React.FC<{ value: string; label?: string; accent: string }> = ({ value, label, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const m = value.match(/^([^0-9]*)([0-9][0-9,]*(?:\.[0-9]+)?)(.*)$/);
+  const target = m ? parseFloat(m[2].replace(/,/g, "")) : 0;
+  const decimals = m && m[2].includes(".") ? m[2].split(".")[1].length : 0;
+  const hasThousands = m ? m[2].includes(",") : false;
+  const progress = interpolate(frame, [0.2 * fps, 1.4 * fps], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+    easing: (t) => 1 - Math.pow(1 - t, 3),
+  });
+  const num = (target * progress).toFixed(decimals);
+  const shown = m
+    ? `${m[1]}${hasThousands ? num.replace(/\B(?=(\d{3})+(?!\d))/g, ",") : num}${m[3]}`
+    : value;
+  const pop = spring({ frame, fps, config: { damping: 13, stiffness: 90 } });
+  return (
+    <AbsoluteFill style={{ flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 18 }}>
+      <div
+        style={{
+          fontFamily,
+          fontSize: 190,
+          fontWeight: 800,
+          letterSpacing: -4,
+          color: accent,
+          transform: `scale(${0.8 + pop * 0.2})`,
+          textShadow: `0 0 60px ${accent}66, 0 0 140px ${accent}33`,
+        }}
+      >
+        {shown}
+      </div>
+      {label && (
+        <div
+          style={{
+            fontFamily,
+            fontSize: 36,
+            fontWeight: 600,
+            letterSpacing: 4,
+            textTransform: "uppercase",
+            color: "rgba(248,250,252,0.85)",
+            opacity: interpolate(frame, [0.9 * fps, 1.3 * fps], [0, 1], {
+              extrapolateLeft: "clamp",
+              extrapolateRight: "clamp",
+            }),
+          }}
+        >
+          {label}
+        </div>
+      )}
+    </AbsoluteFill>
+  );
+};
+
+// --- diagram: labeled boxes revealed in order, arrows draw between ------------
+const DiagramArrow: React.FC<{ vertical?: boolean; draw: number }> = ({ vertical, draw }) => {
+  const w = vertical ? 24 : 74;
+  const h = vertical ? 64 : 24;
+  const lineEnd = vertical ? { x2: 12, y2: 44 } : { x2: 54, y2: 12 };
+  return (
+    <svg width={w} height={h} style={{ flexShrink: 0 }}>
+      <line
+        x1={12}
+        y1={12}
+        {...lineEnd}
+        stroke="rgba(226,232,240,0.65)"
+        strokeWidth={4}
+        strokeLinecap="round"
+        pathLength={1}
+        strokeDasharray={1}
+        strokeDashoffset={1 - draw}
+      />
+      {draw > 0.95 && (
+        <path
+          d={vertical ? "M 4 42 L 12 56 L 20 42" : "M 52 4 L 66 12 L 52 20"}
+          fill="none"
+          stroke="rgba(226,232,240,0.65)"
+          strokeWidth={4}
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      )}
+    </svg>
+  );
+};
+
+const DiagramScene: React.FC<{ nodes: Array<{ label: string }>; column?: boolean; accent: string }> = ({
+  nodes,
+  column,
+  accent,
+}) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const vertical = column ?? nodes.length > 3;
+  const stepS = 0.55;
+  return (
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
+      <div
+        style={{
+          display: "flex",
+          flexDirection: vertical ? "column" : "row",
+          alignItems: "center",
+          gap: 18,
+          padding: "0 40px",
+        }}
+      >
+        {nodes.map((n, i) => {
+          const pop = spring({ frame: frame - Math.round((0.2 + i * stepS) * fps), fps, config: { damping: 12, stiffness: 110 } });
+          const draw = interpolate(
+            frame,
+            [(0.2 + i * stepS + 0.28) * fps, (0.2 + i * stepS + 0.5) * fps],
+            [0, 1],
+            { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+          );
+          return (
+            <React.Fragment key={i}>
+              {i > 0 && <DiagramArrow vertical={vertical} draw={draw} />}
+              <div
+                style={{
+                  borderRadius: 18,
+                  background: "#0E1B33",
+                  border: `2.5px solid ${i === nodes.length - 1 ? "#F0B429" : "#5EEAD4"}`,
+                  boxShadow: `0 0 30px ${i === nodes.length - 1 ? "rgba(240,180,41,0.25)" : "rgba(94,234,212,0.22)"}`,
+                  padding: "22px 34px",
+                  transform: `scale(${pop})`,
+                  opacity: pop,
+                  maxWidth: vertical ? 700 : 320,
+                }}
+              >
+                <div
+                  style={{
+                    fontFamily,
+                    fontSize: 37,
+                    fontWeight: 600,
+                    color: "#F1F5F9",
+                    textAlign: "center",
+                    lineHeight: 1.3,
+                  }}
+                >
+                  {n.label}
+                </div>
+              </div>
+            </React.Fragment>
+          );
+        })}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 // --- the canvas: backdrop -> content -> vignette ------------------------------
 export const SceneCanvas: React.FC<{ scene: Scene; accent: string }> = ({ scene, accent }) => {
   const c = scene.content;
@@ -538,6 +915,21 @@ export const SceneCanvas: React.FC<{ scene: Scene; accent: string }> = ({ scene,
         <IconScene icon={c.icon} overlay={c.overlay} burst={c.burst} badge={c.badge} label={c.label} accent={accent} />
       )}
       {c.type === "network" && <NetworkScene nodeCount={c.nodeCount} label={c.label} />}
+      {c.type === "chat_window" && (
+        <ChatWindow title={c.title} question={c.question} answer={c.answer} accent={accent} />
+      )}
+      {c.type === "compare" && (
+        <CompareScene
+          title={c.title}
+          leftLabel={c.leftLabel}
+          leftItems={c.leftItems}
+          rightLabel={c.rightLabel}
+          rightItems={c.rightItems}
+          accent={accent}
+        />
+      )}
+      {c.type === "stat" && <StatScene value={c.value} label={c.label} accent={accent} />}
+      {c.type === "diagram" && <DiagramScene nodes={c.nodes} column={c.column} accent={accent} />}
       <Vignette />
     </AbsoluteFill>
   );
