@@ -54,6 +54,8 @@ interface AudioLayer {
   loop?: boolean;
   fadeInSeconds?: number;
   fadeOutSeconds?: number;
+  swellAtSeconds?: number;   // when the music rises for the outro (music layer)
+  swellToVolume?: number;    // outro level it rises to (e.g. 0.8)
 }
 
 export interface ExplainerStoryProps {
@@ -63,6 +65,7 @@ export interface ExplainerStoryProps {
   presenterName?: string;
   audio?: { narration?: AudioLayer; music?: AudioLayer };
   accentColor?: string;
+  outroSeconds?: number; // padding after the narration (music-out moment)
 }
 
 const BG = "#0F172A";
@@ -377,7 +380,7 @@ const STORY_FPS = 60; // cinematic-smooth motion graphics; platforms cap at 60
 const calculateStoryMetadata: CalculateMetadataFunction<ExplainerStoryProps> = async ({ props }) => {
   const beats = props.beats || [];
   const lastEnd = beats.length ? Math.max(...beats.map((b) => b.outSeconds || 0)) : 20;
-  return { durationInFrames: Math.ceil((lastEnd + 0.8) * STORY_FPS), fps: STORY_FPS };
+  return { durationInFrames: Math.ceil((lastEnd + (props.outroSeconds ?? 0.8)) * STORY_FPS), fps: STORY_FPS };
 };
 
 export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
@@ -476,18 +479,29 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
           loop={audio.music.loop ?? true}
           loopVolumeCurveBehavior="repeat"
           volume={(f) => {
-            const base = audio.music!.volume ?? 0.07;
-            const fadeIn = interpolate(f, [0, (audio.music!.fadeInSeconds ?? 1) * fps], [0, base], {
+            const m = audio.music!;
+            const base = m.volume ?? 0.07;
+            // outro swell: the bed rises once the narration is done
+            const level =
+              m.swellAtSeconds !== undefined && m.swellToVolume !== undefined
+                ? interpolate(
+                    f,
+                    [m.swellAtSeconds * fps, (m.swellAtSeconds + 0.7) * fps],
+                    [base, m.swellToVolume],
+                    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
+                  )
+                : base;
+            const fadeIn = interpolate(f, [0, (m.fadeInSeconds ?? 1) * fps], [0, 1], {
               extrapolateLeft: "clamp",
               extrapolateRight: "clamp",
             });
             const fadeOut = interpolate(
               f,
-              [durationInFrames - (audio.music!.fadeOutSeconds ?? 2) * fps, durationInFrames],
-              [base, 0],
+              [durationInFrames - (m.fadeOutSeconds ?? 2) * fps, durationInFrames],
+              [1, 0],
               { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
             );
-            return Math.min(fadeIn, fadeOut);
+            return level * Math.min(fadeIn, fadeOut);
           }}
         />
       )}
