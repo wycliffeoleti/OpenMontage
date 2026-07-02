@@ -12,6 +12,7 @@ import {
   CalculateMetadataFunction,
 } from "remotion";
 import { loadFont } from "@remotion/google-fonts/Poppins";
+import { SceneCanvas, type Scene } from "./StoryScenes";
 
 const { fontFamily } = loadFont();
 
@@ -36,6 +37,7 @@ function resolveAsset(src: string): string {
 interface Beat {
   imageSrc?: string;
   videoSrc?: string; // real b-roll clip for this beat (muted, cover-fit)
+  scene?: Scene;     // motion-graphics scene (preferred over image/video when set)
   inSeconds: number;
   outSeconds: number;
 }
@@ -66,22 +68,37 @@ export interface ExplainerStoryProps {
 const BG = "#0F172A";
 const ACCENT = "#22D3EE";
 
-// --- one beat visual (image w/ Ken Burns, or muted b-roll video) + crossfade ---
+// --- one beat visual (scene, image w/ Ken Burns, or muted b-roll) + crossfade ---
 // Beats OVERLAP by ~0.4s in the props; fading fully out over that window makes a
 // true crossfade between consecutive beats (no library needed).
-const CROSSFADE_FRAMES = 12;
+const CROSSFADE_S = 0.4;
 
 const useBeatFade = (durationInFrames: number): number => {
   const frame = useCurrentFrame();
-  const fadeIn = interpolate(frame, [0, CROSSFADE_FRAMES], [0, 1], {
+  const { fps } = useVideoConfig();
+  const fade = Math.max(1, Math.round(CROSSFADE_S * fps));
+  const fadeIn = interpolate(frame, [0, fade], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-  const fadeOut = interpolate(frame, [durationInFrames - CROSSFADE_FRAMES, durationInFrames], [1, 0], {
+  const fadeOut = interpolate(frame, [durationInFrames - fade, durationInFrames], [1, 0], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
   return fadeIn * fadeOut;
+};
+
+const BeatScene: React.FC<{ scene: Scene; durationInFrames: number; accent: string }> = ({
+  scene,
+  durationInFrames,
+  accent,
+}) => {
+  const opacity = useBeatFade(durationInFrames);
+  return (
+    <AbsoluteFill style={{ opacity }}>
+      <SceneCanvas scene={scene} accent={accent} />
+    </AbsoluteFill>
+  );
 };
 
 const BeatBottomBlend: React.FC = () => (
@@ -257,7 +274,7 @@ const AnimatedHost: React.FC<{ words: WordCaption[]; name: string; accent: strin
   const bob = Math.sin((frame / fps) * 2.0) * 5;
   const sway = Math.sin((frame / fps) * 0.9) * 1.5; // degrees, whole-body
   const gazeX = Math.sin((frame / fps) * 0.7) * 4;
-  const blink = frame % 82 < 4 ? 0.08 : 1;
+  const blink = frame % Math.round(2.7 * fps) < Math.max(2, Math.round(0.13 * fps)) ? 0.08 : 1;
 
   // --- arm gesture on each caption-page start (anticipate -> raise -> settle) ---
   const pages = buildCaptionPages(words);
@@ -269,7 +286,7 @@ const AnimatedHost: React.FC<{ words: WordCaption[]; name: string; accent: strin
   }
   const tSince = frame - pageStartFrame;
   const lift = spring({ frame: tSince, fps, config: HOST_SPRING });
-  const hold = interpolate(tSince, [0, 26, 44], [1, 1, 0], {
+  const hold = interpolate(tSince, [0, Math.round(0.87 * fps), Math.round(1.47 * fps)], [1, 1, 0], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
@@ -355,10 +372,12 @@ const AnimatedHost: React.FC<{ words: WordCaption[]; name: string; accent: strin
   );
 };
 
+const STORY_FPS = 60; // cinematic-smooth motion graphics; platforms cap at 60
+
 const calculateStoryMetadata: CalculateMetadataFunction<ExplainerStoryProps> = async ({ props }) => {
   const beats = props.beats || [];
   const lastEnd = beats.length ? Math.max(...beats.map((b) => b.outSeconds || 0)) : 20;
-  return { durationInFrames: Math.ceil((lastEnd + 0.8) * 30) };
+  return { durationInFrames: Math.ceil((lastEnd + 0.8) * STORY_FPS), fps: STORY_FPS };
 };
 
 export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
@@ -380,6 +399,7 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
   // carry the last available image forward if a beat has no visual of its own
   let lastImg: string | undefined;
   const filled = beats.map((b) => {
+    if (b.scene) return b; // motion-graphics beats never carry images
     if (b.imageSrc) lastImg = b.imageSrc;
     return { ...b, imageSrc: b.imageSrc || (b.videoSrc ? undefined : lastImg) };
   });
@@ -391,10 +411,12 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
         {filled.map((b, i) => {
           const from = Math.round(b.inSeconds * fps);
           const dur = Math.max(1, Math.round((b.outSeconds - b.inSeconds) * fps));
-          if (!b.videoSrc && !b.imageSrc) return null;
+          if (!b.scene && !b.videoSrc && !b.imageSrc) return null;
           return (
             <Sequence key={i} from={from} durationInFrames={dur} layout="none">
-              {b.videoSrc ? (
+              {b.scene ? (
+                <BeatScene scene={b.scene} durationInFrames={dur} accent={accent} />
+              ) : b.videoSrc ? (
                 <BeatVideo src={b.videoSrc} durationInFrames={dur} />
               ) : (
                 <BeatImage src={b.imageSrc!} durationInFrames={dur} />
