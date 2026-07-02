@@ -2,6 +2,7 @@ import {
   AbsoluteFill,
   Audio,
   Img,
+  OffthreadVideo,
   Sequence,
   interpolate,
   spring,
@@ -34,6 +35,7 @@ function resolveAsset(src: string): string {
 
 interface Beat {
   imageSrc?: string;
+  videoSrc?: string; // real b-roll clip for this beat (muted, cover-fit)
   inSeconds: number;
   outSeconds: number;
 }
@@ -64,34 +66,64 @@ export interface ExplainerStoryProps {
 const BG = "#0F172A";
 const ACCENT = "#22D3EE";
 
-// --- one beat image with a slow Ken Burns zoom + fade (sequence-relative) ---
+// --- one beat visual (image w/ Ken Burns, or muted b-roll video) + crossfade ---
+// Beats OVERLAP by ~0.4s in the props; fading fully out over that window makes a
+// true crossfade between consecutive beats (no library needed).
+const CROSSFADE_FRAMES = 12;
+
+const useBeatFade = (durationInFrames: number): number => {
+  const frame = useCurrentFrame();
+  const fadeIn = interpolate(frame, [0, CROSSFADE_FRAMES], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const fadeOut = interpolate(frame, [durationInFrames - CROSSFADE_FRAMES, durationInFrames], [1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  return fadeIn * fadeOut;
+};
+
+const BeatBottomBlend: React.FC = () => (
+  <AbsoluteFill
+    style={{ background: "linear-gradient(to bottom, rgba(15,23,42,0) 70%, rgba(15,23,42,0.85) 100%)" }}
+  />
+);
+
 const BeatImage: React.FC<{ src: string; durationInFrames: number }> = ({ src, durationInFrames }) => {
   const frame = useCurrentFrame();
   const progress = durationInFrames > 1 ? Math.min(1, frame / durationInFrames) : 0;
   const scale = 1 + progress * 0.14;
   const drift = interpolate(progress, [0, 1], [0, -18]);
-  const fadeIn = interpolate(frame, [0, 12], [0, 1], { extrapolateLeft: "clamp", extrapolateRight: "clamp" });
-  const fadeOut = interpolate(frame, [durationInFrames - 10, durationInFrames], [1, 0.55], {
-    extrapolateLeft: "clamp",
-    extrapolateRight: "clamp",
-  });
+  const opacity = useBeatFade(durationInFrames);
   return (
-    <AbsoluteFill style={{ overflow: "hidden", background: BG }}>
+    <AbsoluteFill style={{ overflow: "hidden" }}>
       <Img
         src={resolveAsset(src)}
         style={{
           width: "100%",
           height: "100%",
           objectFit: "cover",
-          opacity: fadeIn * fadeOut,
+          opacity,
           transform: `scale(${scale}) translateY(${drift}px)`,
           willChange: "transform, opacity",
         }}
       />
-      {/* subtle bottom gradient so the caption band blends in */}
-      <AbsoluteFill
-        style={{ background: "linear-gradient(to bottom, rgba(15,23,42,0) 70%, rgba(15,23,42,0.85) 100%)" }}
+      <BeatBottomBlend />
+    </AbsoluteFill>
+  );
+};
+
+const BeatVideo: React.FC<{ src: string; durationInFrames: number }> = ({ src, durationInFrames }) => {
+  const opacity = useBeatFade(durationInFrames);
+  return (
+    <AbsoluteFill style={{ overflow: "hidden" }}>
+      <OffthreadVideo
+        src={resolveAsset(src)}
+        muted
+        style={{ width: "100%", height: "100%", objectFit: "cover", opacity }}
       />
+      <BeatBottomBlend />
     </AbsoluteFill>
   );
 };
@@ -169,43 +201,156 @@ const CaptionBand: React.FC<{ words: WordCaption[]; accent: string }> = ({ words
   );
 };
 
-// --- presenter placeholder (a simple stylized "host"); clone plugs in later ---
-const PresenterPlaceholder: React.FC<{ name: string; accent: string }> = ({ name, accent }) => {
+// --- ANIMATED HOST: a friendly bespectacled character that actually "speaks" ---
+// Mouth/gestures are driven by the same word timings the captions use (active
+// word = mouth open), blinks every ~2.7s, pops "!"/"?" marks when the narration
+// exclaims/asks. Pure Remotion SVG (OM's animation-pipeline rules: springs, no
+// linear motion, overshoot pop-ins). Replaced by the AI-clone video via
+// `presenterSrc` later — this is the free stand-in.
+type MouthShape = "closed" | "small_o" | "wide" | "smile";
+
+const HOST_SPRING = { damping: 12, stiffness: 80, mass: 1 }; // flat-motion-graphics feel
+const MARK_MS = 900; // how long a !/? reaction mark stays up
+
+const Mouth: React.FC<{ shape: MouthShape }> = ({ shape }) => {
+  const ink = "#0F172A";
+  switch (shape) {
+    case "small_o":
+      return <circle cx={200} cy={206} r={9} fill={ink} />;
+    case "wide":
+      return <ellipse cx={200} cy={206} rx={17} ry={12} fill={ink} />;
+    case "smile":
+      return <path d="M 180 200 Q 200 220 220 200" stroke={ink} strokeWidth={6} fill="none" strokeLinecap="round" />;
+    default:
+      return <rect x={186} y={203} width={28} height={6} rx={3} fill={ink} />;
+  }
+};
+
+const AnimatedHost: React.FC<{ words: WordCaption[]; name: string; accent: string }> = ({
+  words,
+  name,
+  accent,
+}) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
-  const bob = Math.sin((frame / fps) * 2.2) * 6; // gentle idle motion
+  const ms = (frame / fps) * 1000;
+  const ink = "#0F172A";
+  const skin = "#F8FAFC";
+
+  // --- speaking state from word timings (same source as the caption band) ---
+  let active = -1;
+  for (let i = 0; i < words.length; i++) {
+    if (ms >= words[i].startMs && ms < words[i].endMs) {
+      active = i;
+      break;
+    }
+  }
+  const speaking = active !== -1;
+  let mouth: MouthShape = "closed";
+  if (speaking) {
+    const w = words[active].word.trim();
+    if (w.endsWith(".") || w.endsWith(",")) mouth = "smile";
+    else mouth = active % 2 === 0 ? "wide" : "small_o";
+  }
+
+  // --- idle life: bob, gaze drift, deterministic blink every ~2.7s ---
+  const bob = Math.sin((frame / fps) * 2.0) * 5;
+  const sway = Math.sin((frame / fps) * 0.9) * 1.5; // degrees, whole-body
+  const gazeX = Math.sin((frame / fps) * 0.7) * 4;
+  const blink = frame % 82 < 4 ? 0.08 : 1;
+
+  // --- arm gesture on each caption-page start (anticipate -> raise -> settle) ---
+  const pages = buildCaptionPages(words);
+  let pageStartFrame = 0;
+  for (const p of pages) {
+    const f = Math.round((p.startMs / 1000) * fps);
+    if (f <= frame) pageStartFrame = f;
+    else break;
+  }
+  const tSince = frame - pageStartFrame;
+  const lift = spring({ frame: tSince, fps, config: HOST_SPRING });
+  const hold = interpolate(tSince, [0, 26, 44], [1, 1, 0], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const armAngle = -14 - 38 * lift * hold; // rest -> raised -> back to rest
+
+  // --- "!"/"?" reaction mark when the narration exclaims or asks ---
+  let mark: { char: string; startMs: number } | null = null;
+  for (const w of words) {
+    const last = w.word.trim().slice(-1);
+    if ((last === "!" || last === "?") && ms >= w.startMs && ms < w.startMs + MARK_MS) {
+      mark = { char: last, startMs: w.startMs };
+      break;
+    }
+  }
+  const markFrame = mark ? frame - Math.round((mark.startMs / 1000) * fps) : 0;
+  const markPop = spring({ frame: markFrame, fps, config: { damping: 9, stiffness: 190, mass: 0.8 } });
+  const markOpacity = mark
+    ? interpolate(ms - mark.startMs, [0, 100, MARK_MS - 250, MARK_MS], [0, 1, 1, 0], {
+        extrapolateLeft: "clamp",
+        extrapolateRight: "clamp",
+      })
+    : 0;
+
   return (
-    <div
-      style={{
-        width: 460,
-        height: 300,
-        borderRadius: 32,
-        background: "linear-gradient(160deg, #1E293B, #0B1220)",
-        border: `2px solid ${accent}33`,
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        gap: 14,
-        boxShadow: "0 20px 60px rgba(0,0,0,0.45)",
-      }}
-    >
-      <div
-        style={{
-          transform: `translateY(${bob}px)`,
-          width: 150,
-          height: 150,
-          borderRadius: "50%",
-          background: `radial-gradient(circle at 50% 38%, ${accent}, #0EA5B7)`,
-          position: "relative",
-          overflow: "hidden",
-        }}
+    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+      <svg
+        width={430}
+        height={400}
+        viewBox="0 0 400 380"
+        style={{ transform: `translateY(${bob}px) rotate(${sway}deg)`, transformOrigin: "50% 90%" }}
       >
-        {/* simple bust silhouette */}
-        <div style={{ position: "absolute", top: 34, left: "50%", width: 54, height: 54, borderRadius: "50%", background: "#0F172A", transform: "translateX(-50%)" }} />
-        <div style={{ position: "absolute", bottom: -8, left: "50%", width: 110, height: 70, borderRadius: "55px 55px 0 0", background: "#0F172A", transform: "translateX(-50%)" }} />
+        {/* floor shadow */}
+        <ellipse cx={200} cy={366} rx={95} ry={12} fill="rgba(0,0,0,0.35)" />
+        {/* left arm (rests) */}
+        <line x1={152} y1={282} x2={116} y2={330} stroke={skin} strokeWidth={11} strokeLinecap="round" />
+        <circle cx={114} cy={332} r={11} fill={skin} />
+        {/* body */}
+        <rect x={146} y={244} width={108} height={118} rx={42} fill="#1E293B" stroke={`${accent}55`} strokeWidth={3} />
+        <circle cx={200} cy={292} r={13} fill={accent} opacity={0.9} />
+        {/* gesturing right arm (pivots at the shoulder) */}
+        <g transform={`rotate(${armAngle} 250 280)`}>
+          <line x1={250} y1={280} x2={306} y2={318} stroke={skin} strokeWidth={11} strokeLinecap="round" />
+          <circle cx={308} cy={320} r={11} fill={skin} />
+        </g>
+        {/* antenna */}
+        <line x1={200} y1={62} x2={200} y2={38} stroke={skin} strokeWidth={5} strokeLinecap="round" />
+        <circle cx={200} cy={32} r={8} fill={accent} />
+        {/* head */}
+        <circle cx={200} cy={148} r={86} fill={skin} />
+        {/* glasses: round specs + bridge + temples */}
+        <circle cx={166} cy={142} r={27} fill={`${accent}1F`} stroke={ink} strokeWidth={7} />
+        <circle cx={234} cy={142} r={27} fill={`${accent}1F`} stroke={ink} strokeWidth={7} />
+        <line x1={193} y1={142} x2={207} y2={142} stroke={ink} strokeWidth={7} strokeLinecap="round" />
+        <line x1={139} y1={140} x2={118} y2={132} stroke={ink} strokeWidth={6} strokeLinecap="round" />
+        <line x1={261} y1={140} x2={282} y2={132} stroke={ink} strokeWidth={6} strokeLinecap="round" />
+        {/* pupils (gaze drift + blink) */}
+        <g transform={`translate(${gazeX} 0)`}>
+          <ellipse cx={166} cy={144} rx={9} ry={9 * blink} fill={ink} />
+          <ellipse cx={234} cy={144} rx={9} ry={9 * blink} fill={ink} />
+        </g>
+        <Mouth shape={mouth} />
+        {/* reaction mark */}
+        {mark && (
+          <text
+            x={310}
+            y={84}
+            fontFamily={fontFamily}
+            fontSize={82}
+            fontWeight={800}
+            fill={accent}
+            opacity={markOpacity}
+            transform={`scale(${markPop})`}
+            style={{ transformOrigin: "310px 84px", transformBox: "fill-box" } as React.CSSProperties}
+          >
+            {mark.char}
+          </text>
+        )}
+      </svg>
+      <div style={{ fontFamily, fontSize: 28, fontWeight: 600, color: "#F8FAFC", letterSpacing: 0.5, opacity: 0.85 }}>
+        {name}
       </div>
-      <div style={{ fontFamily, fontSize: 30, fontWeight: 600, color: "#F8FAFC", letterSpacing: 0.5 }}>{name}</div>
     </div>
   );
 };
@@ -232,11 +377,11 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
   const CAP_H = Math.round(height * 0.13);        // middle: caption divider
   const PRES_TOP = CAP_TOP + CAP_H;               // bottom: presenter
 
-  // carry the last available image forward if a beat has none
+  // carry the last available image forward if a beat has no visual of its own
   let lastImg: string | undefined;
   const filled = beats.map((b) => {
     if (b.imageSrc) lastImg = b.imageSrc;
-    return { ...b, imageSrc: b.imageSrc || lastImg };
+    return { ...b, imageSrc: b.imageSrc || (b.videoSrc ? undefined : lastImg) };
   });
 
   return (
@@ -246,10 +391,14 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
         {filled.map((b, i) => {
           const from = Math.round(b.inSeconds * fps);
           const dur = Math.max(1, Math.round((b.outSeconds - b.inSeconds) * fps));
-          if (!b.imageSrc) return null;
+          if (!b.videoSrc && !b.imageSrc) return null;
           return (
             <Sequence key={i} from={from} durationInFrames={dur} layout="none">
-              <BeatImage src={b.imageSrc} durationInFrames={dur} />
+              {b.videoSrc ? (
+                <BeatVideo src={b.videoSrc} durationInFrames={dur} />
+              ) : (
+                <BeatImage src={b.imageSrc!} durationInFrames={dur} />
+              )}
             </Sequence>
           );
         })}
@@ -291,7 +440,7 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
         {presenterSrc ? (
           <Img src={resolveAsset(presenterSrc)} style={{ width: 460, height: 300, objectFit: "cover", borderRadius: 32 }} />
         ) : (
-          <PresenterPlaceholder name={presenterName} accent={accent} />
+          <AnimatedHost words={captions} name={presenterName} accent={accent} />
         )}
       </div>
 
