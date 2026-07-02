@@ -169,8 +169,8 @@ export const Root: React.FC = () => {
       <Composition
         id="ExplainerStory"
         component={ExplainerStory}
-        durationInFrames={30 * 30}
-        fps={30}
+        durationInFrames={30 * 60}
+        fps={60}
         width={1080}
         height={1920}
         defaultProps={{
