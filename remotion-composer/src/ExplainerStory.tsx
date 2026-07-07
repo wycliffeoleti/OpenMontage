@@ -429,10 +429,10 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
   const { fps, width, height, durationInFrames } = useVideoConfig();
   const accent = accentColor || ACCENT;
 
-  const IMG_H = Math.round(height * 0.54);       // top: images
+  const IMG_H = Math.round(height * 0.59);       // top: images (the star — gets the space)
   const CAP_TOP = IMG_H;
-  const CAP_H = Math.round(height * 0.13);        // middle: caption divider
-  const PRES_TOP = CAP_TOP + CAP_H;               // bottom: presenter
+  const CAP_H = Math.round(height * 0.08);        // middle: captions hug the font (58px + air)
+  const PRES_TOP = CAP_TOP + CAP_H;               // bottom: presenter (0.59+0.08 = same 0.67 as before)
 
   // carry the last available image forward if a beat has no visual of its own
   let lastImg: string | undefined;
@@ -464,7 +464,8 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
         })}
       </div>
 
-      {/* MIDDLE — caption divider band */}
+      {/* MIDDLE — captions on the page itself; a single hairline divides them
+          from the imagery (the old solid panel + double border was dead chrome) */}
       <div
         style={{
           position: "absolute",
@@ -472,9 +473,7 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
           left: 0,
           width,
           height: CAP_H,
-          background: "#0B1220",
-          borderTop: `3px solid ${accent}`,
-          borderBottom: `3px solid ${accent}55`,
+          borderTop: `2px solid ${accent}40`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
