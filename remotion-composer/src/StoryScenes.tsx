@@ -70,6 +70,14 @@ export type SceneContent =
   | {
       type: "staged";
       elements: StagedElement[];        // the free-form visual stage (see below)
+    }
+  | {
+      type: "chart";
+      title?: string;                   // headline over the chart
+      unit?: string;                    // value unit shown with the last point ("TWh")
+      points: Array<{ label: string; value: number }>; // ordered series (e.g. years)
+      kind?: "line" | "bar";            // default "line"
+      source?: string;                  // credit line ("Our World in Data · CC BY")
     };
 
 // One prop on the stage: a drawable icon, a labeled entity badge, a keyword
@@ -1117,6 +1125,88 @@ const StagedScene: React.FC<{ elements: StagedElement[]; accent: string }> = ({ 
   </AbsoluteFill>
 );
 
+// --- chart: REAL numbers drawn as an animated line/bar chart -------------------
+// The data arrives from the factory's chart socket (open sources, CC-BY) — this
+// is original synthesis: our own visual of real data, never a screenshot.
+const ChartScene: React.FC<{
+  title?: string;
+  unit?: string;
+  points: Array<{ label: string; value: number }>;
+  kind?: "line" | "bar";
+  source?: string;
+  accent: string;
+}> = ({ title, unit, points, kind = "line", source, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const W = 880;
+  const H = 460;
+  const PAD = 24;
+  const n = points.length;
+  const values = points.map((p) => p.value);
+  const lo = Math.min(...values);
+  const hi = Math.max(...values);
+  const span = hi - lo || 1;
+  const x = (i: number) => PAD + (i / Math.max(1, n - 1)) * (W - 2 * PAD);
+  const y = (v: number) => H - PAD - ((v - lo) / span) * (H - 2 * PAD);
+  // draw-on progress: the series reveals over ~1.6s after a short hold
+  const progress = interpolate(frame, [Math.round(0.3 * fps), Math.round(1.9 * fps)], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const shown = Math.max(2, Math.ceil(n * progress));
+  const pts = points.slice(0, shown);
+  const path = pts.map((p, i) => `${i === 0 ? "M" : "L"} ${x(i)} ${y(p.value)}`).join(" ");
+  const last = pts[pts.length - 1];
+  const titleIn = spring({ frame, fps, config: { damping: 200 } });
+  return (
+    <AbsoluteFill style={{ alignItems: "center", justifyContent: "center" }}>
+      <div style={{ width: W, transform: `translateY(${(1 - titleIn) * 24}px)`, opacity: titleIn }}>
+        {title && (
+          <div style={{ fontFamily, fontSize: 44, fontWeight: 700, color: "#F8FAFC", marginBottom: 18 }}>
+            {title}
+          </div>
+        )}
+        <svg width={W} height={H} style={{ display: "block" }}>
+          <line x1={PAD} y1={H - PAD} x2={W - PAD} y2={H - PAD} stroke="#334155" strokeWidth={2} />
+          {kind === "bar"
+            ? pts.map((p, i) => {
+                const bw = ((W - 2 * PAD) / n) * 0.62;
+                return (
+                  <rect key={i} x={x(i) - bw / 2} y={y(p.value)} width={bw}
+                        height={H - PAD - y(p.value)} rx={6} fill={accent} opacity={0.9} />
+                );
+              })
+            : (
+              <>
+                <path d={path} fill="none" stroke={accent} strokeWidth={7}
+                      strokeLinecap="round" strokeLinejoin="round" />
+                {last && <circle cx={x(pts.length - 1)} cy={y(last.value)} r={11} fill={accent} />}
+              </>
+            )}
+          {/* first + last labels keep it readable at a glance */}
+          <text x={x(0)} y={H - 4} fontFamily={fontFamily} fontSize={24} fill="#94A3B8" textAnchor="start">
+            {points[0].label}
+          </text>
+          <text x={x(n - 1)} y={H - 4} fontFamily={fontFamily} fontSize={24} fill="#94A3B8" textAnchor="end">
+            {points[n - 1].label}
+          </text>
+          {last && (
+            <text x={Math.min(x(pts.length - 1), W - PAD)} y={Math.max(30, y(last.value) - 20)}
+                  fontFamily={fontFamily} fontSize={34} fontWeight={700} fill="#F8FAFC" textAnchor="end">
+              {`${Math.round(last.value).toLocaleString()}${unit ? " " + unit : ""}`}
+            </text>
+          )}
+        </svg>
+        {source && (
+          <div style={{ fontFamily, fontSize: 20, color: "#64748B", marginTop: 10, textAlign: "right" }}>
+            {source}
+          </div>
+        )}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 // --- the canvas: backdrop -> content -> vignette ------------------------------
 export const SceneCanvas: React.FC<{ scene: Scene; accent: string }> = ({ scene, accent }) => {
   const c = scene.content;
@@ -1152,6 +1242,10 @@ export const SceneCanvas: React.FC<{ scene: Scene; accent: string }> = ({ scene,
       {c.type === "stat" && <StatScene value={c.value} label={c.label} accent={accent} />}
       {c.type === "diagram" && <DiagramScene nodes={c.nodes} column={c.column} accent={accent} />}
       {c.type === "staged" && <StagedScene elements={c.elements} accent={accent} />}
+      {c.type === "chart" && (
+        <ChartScene title={c.title} unit={c.unit} points={c.points} kind={c.kind}
+                    source={c.source} accent={accent} />
+      )}
       <Vignette />
     </AbsoluteFill>
   );
