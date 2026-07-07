@@ -112,10 +112,6 @@ const BeatBottomBlend: React.FC = () => (
 );
 
 const BeatImage: React.FC<{ src: string; durationInFrames: number }> = ({ src, durationInFrames }) => {
-  const frame = useCurrentFrame();
-  const progress = durationInFrames > 1 ? Math.min(1, frame / durationInFrames) : 0;
-  const scale = 1 + progress * 0.14;
-  const drift = interpolate(progress, [0, 1], [0, -18]);
   const opacity = useBeatFade(durationInFrames);
   return (
     <AbsoluteFill style={{ overflow: "hidden" }}>
@@ -126,8 +122,7 @@ const BeatImage: React.FC<{ src: string; durationInFrames: number }> = ({ src, d
           height: "100%",
           objectFit: "cover",
           opacity,
-          transform: `scale(${scale}) translateY(${drift}px)`,
-          willChange: "transform, opacity",
+          willChange: "opacity",
         }}
       />
       <BeatBottomBlend />
