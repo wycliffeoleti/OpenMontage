@@ -38,6 +38,7 @@ interface Beat {
   imageSrc?: string;
   videoSrc?: string; // real b-roll clip for this beat (muted, cover-fit)
   scene?: Scene;     // motion-graphics scene (preferred over image/video when set)
+  credit?: string;   // attribution line (CC-BY sources) — drawn small on the band
   inSeconds: number;
   outSeconds: number;
 }
@@ -266,26 +267,41 @@ const AnimatedHost: React.FC<{ words: WordCaption[]; name: string; accent: strin
     }
   }
   const speaking = active !== -1;
+  // Mouth follows the WORD'S OWN CLOCK: it opens and closes in syllable-like
+  // cycles across the word's real start..end window (accurate, not parity).
   let mouth: MouthShape = "closed";
   if (speaking) {
-    const w = words[active].word.trim();
-    if (w.endsWith(".") || w.endsWith(",")) mouth = "smile";
-    else mouth = active % 2 === 0 ? "wide" : "small_o";
+    const w = words[active];
+    const text = w.word.trim();
+    const p = (ms - w.startMs) / Math.max(1, w.endMs - w.startMs);
+    const syllables = Math.min(3, Math.max(1, Math.round(text.replace(/[^a-zA-Z]/g, "").length / 3)));
+    const open = Math.abs(Math.sin(p * Math.PI * syllables));
+    if (/[.!?]$/.test(text) && p > 0.72) mouth = "smile";
+    else if (open > 0.62) mouth = "wide";
+    else if (open > 0.22) mouth = "small_o";
   }
 
-  // --- idle life: bob, gaze drift, deterministic blink every ~2.7s ---
-  const bob = Math.sin((frame / fps) * 2.0) * 5;
-  const sway = Math.sin((frame / fps) * 0.9) * 1.5; // degrees, whole-body
-  const gazeX = Math.sin((frame / fps) * 0.7) * 4;
+  // --- free movement: slow seeded wander across the band + momentum lean ---
+  const t = frame / fps;
+  const wanderX = 120 * Math.sin(0.23 * t) + 58 * Math.sin(0.11 * t + 1.7);
+  const wanderVel = 120 * 0.23 * Math.cos(0.23 * t) + 58 * 0.11 * Math.cos(0.11 * t + 1.7); // px/s
+  const lean = Math.max(-6, Math.min(6, wanderVel * 0.14)); // tilt into the motion
+  const headTurn = Math.max(-10, Math.min(10, wanderVel * 0.22)); // features lead the way
+  const bob = Math.sin(t * 2.0) * 5 + Math.sin(t * 0.53) * 3; // layered float
+  const breathe = 1 + 0.009 * Math.sin(t * 1.25);
+  const gazeX = Math.max(-7, Math.min(7, wanderVel * 0.16 + Math.sin(t * 0.7) * 3));
   const blink = frame % Math.round(2.7 * fps) < Math.max(2, Math.round(0.13 * fps)) ? 0.08 : 1;
 
-  // --- arm gesture on each caption-page start (anticipate -> raise -> settle) ---
+  // --- arm gesture on each caption-page start, ALTERNATING arms per page ---
   const pages = buildCaptionPages(words);
   let pageStartFrame = 0;
-  for (const p of pages) {
-    const f = Math.round((p.startMs / 1000) * fps);
-    if (f <= frame) pageStartFrame = f;
-    else break;
+  let pageIndex = 0;
+  for (let i = 0; i < pages.length; i++) {
+    const f = Math.round((pages[i].startMs / 1000) * fps);
+    if (f <= frame) {
+      pageStartFrame = f;
+      pageIndex = i;
+    } else break;
   }
   const tSince = frame - pageStartFrame;
   const lift = spring({ frame: tSince, fps, config: HOST_SPRING });
@@ -293,7 +309,9 @@ const AnimatedHost: React.FC<{ words: WordCaption[]; name: string; accent: strin
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
-  const armAngle = -14 - 38 * lift * hold; // rest -> raised -> back to rest
+  const rightGesture = pageIndex % 2 === 0;
+  const armAngle = -14 - 38 * lift * hold * (rightGesture ? 1 : 0); // right arm
+  const leftArmAngle = 38 * lift * hold * (rightGesture ? 0 : 1); // left raises outward (SVG + = CW)
 
   // --- "!"/"?" reaction mark when the narration exclaims or asks ---
   let mark: { char: string; startMs: number } | null = null;
@@ -306,6 +324,8 @@ const AnimatedHost: React.FC<{ words: WordCaption[]; name: string; accent: strin
   }
   const markFrame = mark ? frame - Math.round((mark.startMs / 1000) * fps) : 0;
   const markPop = spring({ frame: markFrame, fps, config: { damping: 9, stiffness: 190, mass: 0.8 } });
+  // a little excited hop when the narration exclaims
+  const hop = mark?.char === "!" ? -20 * Math.sin(Math.min(1, markFrame / (0.45 * fps)) * Math.PI) : 0;
   const markOpacity = mark
     ? interpolate(ms - mark.startMs, [0, 100, MARK_MS - 250, MARK_MS], [0, 1, 1, 0], {
         extrapolateLeft: "clamp",
@@ -314,18 +334,31 @@ const AnimatedHost: React.FC<{ words: WordCaption[]; name: string; accent: strin
     : 0;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+    <div
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 2,
+        transform: `translateX(${wanderX}px)`, // roams the band, name tag follows
+      }}
+    >
       <svg
         width={430}
         height={400}
         viewBox="0 0 400 380"
-        style={{ transform: `translateY(${bob}px) rotate(${sway}deg)`, transformOrigin: "50% 90%" }}
+        style={{
+          transform: `translateY(${bob + hop}px) rotate(${lean}deg) scale(1, ${breathe})`,
+          transformOrigin: "50% 90%",
+        }}
       >
-        {/* floor shadow */}
-        <ellipse cx={200} cy={366} rx={95} ry={12} fill="rgba(0,0,0,0.35)" />
-        {/* left arm (rests) */}
-        <line x1={152} y1={282} x2={116} y2={330} stroke={skin} strokeWidth={11} strokeLinecap="round" />
-        <circle cx={114} cy={332} r={11} fill={skin} />
+        {/* floor shadow (stretches a touch on the hop) */}
+        <ellipse cx={200} cy={366} rx={95 + hop * 0.6} ry={12} fill="rgba(0,0,0,0.35)" />
+        {/* left arm (mirrors the right when it's this page's turn) */}
+        <g transform={`rotate(${leftArmAngle} 152 282)`}>
+          <line x1={152} y1={282} x2={116} y2={330} stroke={skin} strokeWidth={11} strokeLinecap="round" />
+          <circle cx={114} cy={332} r={11} fill={skin} />
+        </g>
         {/* body */}
         <rect x={146} y={244} width={108} height={118} rx={42} fill="#1E293B" stroke={`${accent}55`} strokeWidth={3} />
         <circle cx={200} cy={292} r={13} fill={accent} opacity={0.9} />
@@ -334,23 +367,26 @@ const AnimatedHost: React.FC<{ words: WordCaption[]; name: string; accent: strin
           <line x1={250} y1={280} x2={306} y2={318} stroke={skin} strokeWidth={11} strokeLinecap="round" />
           <circle cx={308} cy={320} r={11} fill={skin} />
         </g>
-        {/* antenna */}
-        <line x1={200} y1={62} x2={200} y2={38} stroke={skin} strokeWidth={5} strokeLinecap="round" />
-        <circle cx={200} cy={32} r={8} fill={accent} />
-        {/* head */}
-        <circle cx={200} cy={148} r={86} fill={skin} />
-        {/* glasses: round specs + bridge + temples */}
-        <circle cx={166} cy={142} r={27} fill={`${accent}1F`} stroke={ink} strokeWidth={7} />
-        <circle cx={234} cy={142} r={27} fill={`${accent}1F`} stroke={ink} strokeWidth={7} />
-        <line x1={193} y1={142} x2={207} y2={142} stroke={ink} strokeWidth={7} strokeLinecap="round" />
-        <line x1={139} y1={140} x2={118} y2={132} stroke={ink} strokeWidth={6} strokeLinecap="round" />
-        <line x1={261} y1={140} x2={282} y2={132} stroke={ink} strokeWidth={6} strokeLinecap="round" />
-        {/* pupils (gaze drift + blink) */}
-        <g transform={`translate(${gazeX} 0)`}>
-          <ellipse cx={166} cy={144} rx={9} ry={9 * blink} fill={ink} />
-          <ellipse cx={234} cy={144} rx={9} ry={9 * blink} fill={ink} />
+        {/* head group turns to lead the walk */}
+        <g transform={`translate(${headTurn} 0)`}>
+          {/* antenna */}
+          <line x1={200} y1={62} x2={200} y2={38} stroke={skin} strokeWidth={5} strokeLinecap="round" />
+          <circle cx={200} cy={32} r={8} fill={accent} />
+          {/* head */}
+          <circle cx={200} cy={148} r={86} fill={skin} />
+          {/* glasses: round specs + bridge + temples */}
+          <circle cx={166} cy={142} r={27} fill={`${accent}1F`} stroke={ink} strokeWidth={7} />
+          <circle cx={234} cy={142} r={27} fill={`${accent}1F`} stroke={ink} strokeWidth={7} />
+          <line x1={193} y1={142} x2={207} y2={142} stroke={ink} strokeWidth={7} strokeLinecap="round" />
+          <line x1={139} y1={140} x2={118} y2={132} stroke={ink} strokeWidth={6} strokeLinecap="round" />
+          <line x1={261} y1={140} x2={282} y2={132} stroke={ink} strokeWidth={6} strokeLinecap="round" />
+          {/* pupils (gaze leads the motion + blink) */}
+          <g transform={`translate(${gazeX} 0)`}>
+            <ellipse cx={166} cy={144} rx={9} ry={9 * blink} fill={ink} />
+            <ellipse cx={234} cy={144} rx={9} ry={9 * blink} fill={ink} />
+          </g>
+          <Mouth shape={mouth} />
         </g>
-        <Mouth shape={mouth} />
         {/* reaction mark */}
         {mark && (
           <text
@@ -394,17 +430,27 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
   const { fps, width, height, durationInFrames } = useVideoConfig();
   const accent = accentColor || ACCENT;
 
-  const IMG_H = Math.round(height * 0.54);       // top: images
+  const IMG_H = Math.round(height * 0.59);       // top: images (the star — gets the space)
   const CAP_TOP = IMG_H;
-  const CAP_H = Math.round(height * 0.13);        // middle: caption divider
-  const PRES_TOP = CAP_TOP + CAP_H;               // bottom: presenter
+  const CAP_H = Math.round(height * 0.08);        // middle: captions hug the font (58px + air)
+  const PRES_TOP = CAP_TOP + CAP_H;               // bottom: presenter (0.59+0.08 = same 0.67 as before)
 
   // carry the last available image forward if a beat has no visual of its own
+  // (its credit rides along — attribution must match what's on screen)
   let lastImg: string | undefined;
+  let lastCredit: string | undefined;
   const filled = beats.map((b) => {
     if (b.scene) return b; // motion-graphics beats never carry images
-    if (b.imageSrc) lastImg = b.imageSrc;
-    return { ...b, imageSrc: b.imageSrc || (b.videoSrc ? undefined : lastImg) };
+    if (b.imageSrc) {
+      lastImg = b.imageSrc;
+      lastCredit = b.credit;
+    }
+    const inherits = !b.imageSrc && !b.videoSrc;
+    return {
+      ...b,
+      imageSrc: b.imageSrc || (b.videoSrc ? undefined : lastImg),
+      credit: inherits ? lastCredit : b.credit,
+    };
   });
 
   return (
@@ -424,12 +470,34 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
               ) : (
                 <BeatImage src={b.imageSrc!} durationInFrames={dur} />
               )}
+              {b.credit ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 18,
+                    bottom: 14,
+                    fontFamily,
+                    fontSize: 20,
+                    fontWeight: 500,
+                    color: "#CBD5E1",
+                    opacity: 0.65,
+                    textShadow: "0 1px 3px rgba(0,0,0,0.85)",
+                    maxWidth: width * 0.72,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {b.credit}
+                </div>
+              ) : null}
             </Sequence>
           );
         })}
       </div>
 
-      {/* MIDDLE — caption divider band */}
+      {/* MIDDLE — captions on the page itself; a single hairline divides them
+          from the imagery (the old solid panel + double border was dead chrome) */}
       <div
         style={{
           position: "absolute",
@@ -437,9 +505,7 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
           left: 0,
           width,
           height: CAP_H,
-          background: "#0B1220",
-          borderTop: `3px solid ${accent}`,
-          borderBottom: `3px solid ${accent}55`,
+          borderTop: `2px solid ${accent}40`,
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
@@ -463,7 +529,17 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
         }}
       >
         {presenterSrc ? (
-          <Img src={resolveAsset(presenterSrc)} style={{ width: 460, height: 300, objectFit: "cover", borderRadius: 32 }} />
+          /\.(mp4|webm|mov)$/i.test(presenterSrc) ? (
+            // The digital clone: a lip-synced talking-head clip (muted — the
+            // composition's narration track IS its voice).
+            <OffthreadVideo
+              muted
+              src={resolveAsset(presenterSrc)}
+              style={{ width: 500, height: 500, objectFit: "cover", borderRadius: 40 }}
+            />
+          ) : (
+            <Img src={resolveAsset(presenterSrc)} style={{ width: 460, height: 300, objectFit: "cover", borderRadius: 32 }} />
+          )
         ) : (
           <AnimatedHost words={captions} name={presenterName} accent={accent} />
         )}
