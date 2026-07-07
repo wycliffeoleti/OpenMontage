@@ -38,6 +38,7 @@ interface Beat {
   imageSrc?: string;
   videoSrc?: string; // real b-roll clip for this beat (muted, cover-fit)
   scene?: Scene;     // motion-graphics scene (preferred over image/video when set)
+  credit?: string;   // attribution line (CC-BY sources) — drawn small on the band
   inSeconds: number;
   outSeconds: number;
 }
@@ -435,11 +436,21 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
   const PRES_TOP = CAP_TOP + CAP_H;               // bottom: presenter (0.59+0.08 = same 0.67 as before)
 
   // carry the last available image forward if a beat has no visual of its own
+  // (its credit rides along — attribution must match what's on screen)
   let lastImg: string | undefined;
+  let lastCredit: string | undefined;
   const filled = beats.map((b) => {
     if (b.scene) return b; // motion-graphics beats never carry images
-    if (b.imageSrc) lastImg = b.imageSrc;
-    return { ...b, imageSrc: b.imageSrc || (b.videoSrc ? undefined : lastImg) };
+    if (b.imageSrc) {
+      lastImg = b.imageSrc;
+      lastCredit = b.credit;
+    }
+    const inherits = !b.imageSrc && !b.videoSrc;
+    return {
+      ...b,
+      imageSrc: b.imageSrc || (b.videoSrc ? undefined : lastImg),
+      credit: inherits ? lastCredit : b.credit,
+    };
   });
 
   return (
@@ -459,6 +470,27 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
               ) : (
                 <BeatImage src={b.imageSrc!} durationInFrames={dur} />
               )}
+              {b.credit ? (
+                <div
+                  style={{
+                    position: "absolute",
+                    right: 18,
+                    bottom: 14,
+                    fontFamily,
+                    fontSize: 20,
+                    fontWeight: 500,
+                    color: "#CBD5E1",
+                    opacity: 0.65,
+                    textShadow: "0 1px 3px rgba(0,0,0,0.85)",
+                    maxWidth: width * 0.72,
+                    whiteSpace: "nowrap",
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                  }}
+                >
+                  {b.credit}
+                </div>
+              ) : null}
             </Sequence>
           );
         })}
