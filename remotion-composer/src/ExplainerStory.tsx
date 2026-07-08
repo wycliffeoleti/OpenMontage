@@ -67,6 +67,7 @@ export interface ExplainerStoryProps {
   audio?: { narration?: AudioLayer; music?: AudioLayer };
   accentColor?: string;
   outroSeconds?: number; // padding after the narration (music-out moment)
+  outroText?: string;    // end card: blank the WHOLE frame, this line centered (e.g. "Follow for more")
 }
 
 const BG = "#0F172A";
@@ -406,6 +407,40 @@ const AnimatedHost: React.FC<{ words: WordCaption[]; name: string; accent: strin
   );
 };
 
+// --- outro end card: the whole frame goes blank, one line dead-center --------
+const OutroCard: React.FC<{ text: string; accent: string }> = ({ text, accent }) => {
+  const frame = useCurrentFrame();
+  const { fps } = useVideoConfig();
+  const t = Math.max(1, Math.round(0.4 * fps));
+  const opacity = interpolate(frame, [0, t], [0, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  const scale = interpolate(frame, [0, t], [0.94, 1], {
+    extrapolateLeft: "clamp",
+    extrapolateRight: "clamp",
+  });
+  return (
+    <AbsoluteFill
+      style={{ backgroundColor: BG, alignItems: "center", justifyContent: "center", opacity }}
+    >
+      <div
+        style={{
+          fontFamily,
+          fontSize: 96,
+          fontWeight: 800,
+          color: "#F8FAFC",
+          letterSpacing: -1.5,
+          transform: `scale(${scale})`,
+          textShadow: `0 0 60px ${accent}33`,
+        }}
+      >
+        {text}
+      </div>
+    </AbsoluteFill>
+  );
+};
+
 const STORY_FPS = 60; // cinematic-smooth motion graphics; platforms cap at 60
 
 const calculateStoryMetadata: CalculateMetadataFunction<ExplainerStoryProps> = async ({ props }) => {
@@ -421,6 +456,7 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
   presenterName = "Your AI host",
   audio,
   accentColor,
+  outroText,
 }) => {
   const { fps, width, height, durationInFrames } = useVideoConfig();
   const accent = accentColor || ACCENT;
@@ -539,6 +575,22 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
           <AnimatedHost words={captions} name={presenterName} accent={accent} />
         )}
       </div>
+
+      {/* OUTRO — the concept has ended: blank the whole frame, one centered line
+          (mounted last so it covers all three bands; rides the music swell) */}
+      {outroText
+        ? (() => {
+            const lastWordEnd = captions.length
+              ? Math.max(...captions.map((w) => w.endMs)) / 1000
+              : 0;
+            const from = Math.round((lastWordEnd + 0.35) * fps);
+            return (
+              <Sequence from={from} durationInFrames={Math.max(1, durationInFrames - from)} layout="none">
+                <OutroCard text={outroText} accent={accent} />
+              </Sequence>
+            );
+          })()
+        : null}
 
       {/* Audio — narration + music */}
       {audio?.narration?.src && (
