@@ -8,6 +8,7 @@ import {
 import { getResponsiveSceneLayout } from "./responsiveLayout";
 
 interface HeroTitleProps {
+  [key: string]: unknown;
   title: string;
   subtitle?: string;
 }

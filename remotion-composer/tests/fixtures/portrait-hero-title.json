@@ -1,0 +1,17 @@
+{
+  "theme": "flat-motion-graphics",
+  "cuts": [
+    {
+      "id": "hero",
+      "type": "hero_title",
+      "source": "",
+      "text": "RESPONSIVE HERO",
+      "subtitle": "1080 × 1920 safe area",
+      "in_seconds": 0,
+      "out_seconds": 2
+    }
+  ],
+  "overlays": [],
+  "captions": [],
+  "audio": {}
+}

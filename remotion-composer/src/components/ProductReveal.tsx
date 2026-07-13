@@ -10,6 +10,7 @@ import {
 } from "remotion";
 
 export interface ProductRevealProps {
+  [key: string]: unknown;
   productImage: string;
   productName: string;
   price: string;

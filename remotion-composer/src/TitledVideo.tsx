@@ -20,6 +20,7 @@ const { fontFamily } = loadFont("normal", {
 });
 
 export interface TitledVideoProps {
+  [key: string]: unknown;
   videoSrc: string;
   tagline: string;
   // When the tagline starts animating in, in seconds from the start of the video.

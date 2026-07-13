@@ -7,6 +7,7 @@ import {
 } from "remotion";
 
 export interface EndTagProps {
+  [key: string]: unknown;
   text: string;
   palette?: "cool_offwhite_on_black" | "warm_ivory_on_black";
   // Optional extra fade hold controls (all in seconds)

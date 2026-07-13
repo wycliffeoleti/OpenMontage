@@ -1,0 +1,56 @@
+{
+  "beats": [
+    {
+      "scene": null,
+      "imageSrc": "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1080' height='1133'%3E%3Crect width='1080' height='1133' fill='%230A0F1E'/%3E%3Ccircle cx='540' cy='480' r='260' fill='%2322D3EE'/%3E%3Cpath d='M360 760 L540 600 L720 760' stroke='%23F8FAFC' stroke-width='38' fill='none'/%3E%3C/svg%3E",
+      "videoSrc": null,
+      "credit": "Photo illustration: Example Creator / Openverse / CC BY 4.0 — deliberately long attribution for safe-area and ellipsis verification",
+      "inSeconds": 0,
+      "outSeconds": 2.4
+    },
+    {
+      "scene": null,
+      "imageSrc": null,
+      "videoSrc": null,
+      "credit": null,
+      "inSeconds": 2.0,
+      "outSeconds": 4.4
+    },
+    {
+      "scene": {
+        "background": {"tone": "void", "particles": "none"},
+        "content": {
+          "type": "chart",
+          "title": "Validated chart input",
+          "unit": "items",
+          "kind": "line",
+          "source": "Deterministic local fixture",
+          "points": [
+            {"label": "Start", "value": 2},
+            {"label": "Middle", "value": 5},
+            {"label": "End", "value": 9}
+          ]
+        }
+      },
+      "inSeconds": 4.0,
+      "outSeconds": 6.4
+    }
+  ],
+  "captions": [
+    {"word": "Static", "startMs": 200, "endMs": 850},
+    {"word": "images", "startMs": 850, "endMs": 1450},
+    {"word": "stay", "startMs": 1450, "endMs": 1950},
+    {"word": "still.", "startMs": 1950, "endMs": 2450},
+    {"word": "Credits", "startMs": 2500, "endMs": 3150},
+    {"word": "carry", "startMs": 3150, "endMs": 3650},
+    {"word": "with", "startMs": 3650, "endMs": 4050},
+    {"word": "media.", "startMs": 4050, "endMs": 4550},
+    {"word": "Charts", "startMs": 4600, "endMs": 5150},
+    {"word": "are", "startMs": 5150, "endMs": 5450},
+    {"word": "validated", "startMs": 5450, "endMs": 6100}
+  ],
+  "accentColor": "#22D3EE",
+  "presenterName": "Verification Host",
+  "outroSeconds": 1.5,
+  "outroText": "Verified locally"
+}
