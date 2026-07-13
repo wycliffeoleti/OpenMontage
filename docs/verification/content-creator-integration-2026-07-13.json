@@ -1,0 +1,125 @@
+{
+  "schema_version": "1.0",
+  "generated_at": "2026-07-13T09:39:10+02:00",
+  "status": "ready_for_clicky_wicky_visual_review",
+  "production_switch_approved": false,
+  "repository": "/home/wolnxpc/projects/Personal/automations/OpenMontage",
+  "worktree": "/home/wolnxpc/projects/Personal/automations/OpenMontage/.worktrees/t_9f5efcba",
+  "branch": "production/content-creator-integration-20260713",
+  "baseline": "f8d94632ea9bd0057da31904acca1cefecf005dd",
+  "production_rollback_anchor": "fd297bd0895b30d22e1e661decc14e0915c9d6c9",
+  "integration": {
+    "owner": "Content Creator private-production overlay",
+    "version": "1.0.0",
+    "path": "remotion-composer/src/integrations/content-creator/v1",
+    "composition_ids": {
+      "ExplainerStory": {"width": 1080, "height": 1920, "fps": 60},
+      "ExplainerVertical": {"width": 1080, "height": 1920, "fps": 30}
+    },
+    "allowed_portrait_cuts": ["hero_title", "callout", "terminal_scene"],
+    "preserved_contracts": [
+      "static beat images without zoom",
+      "caption pages and crossfades",
+      "animated host fallback and optional presenter",
+      "music swell and outro padding",
+      "full-frame outro",
+      "per-beat and carried attribution"
+    ]
+  },
+  "commits": [
+    {"sha": "57017c53e5e72a2c4e1bf445fef7820cf124c9b6", "subject": "feat(content-creator): add versioned integration contracts"},
+    {"sha": "df06feb619920381475c4f030393d8d93346bf4b", "subject": "feat(content-creator): add story renderer overlay"},
+    {"sha": "bb4ef0ec7918703f96afc069b70d1d2792ce7267", "subject": "feat(content-creator): register compatible portrait compositions"},
+    {"sha": "079e6554b3f6594432d0f4afa0f86301c154ffd2", "subject": "fix(content-creator): close audited rendering defects"},
+    {"sha": "b15430a8aac17d29a731ecb86739e29a733304ba", "subject": "test(content-creator): verify live producer contracts"}
+  ],
+  "defects_closed": {
+    "posix_file_uri": true,
+    "empty_chart_rejected": true,
+    "chart_points_bounded": {"minimum": 1, "maximum": 64},
+    "chart_values_finite": true,
+    "chart_labels_bounded": {"minimum_characters": 1, "maximum_characters": 80},
+    "typescript_errors": 0,
+    "presenter_query_fragment_urls": true,
+    "poppins": {"subset": "latin", "weights": [400, 500, 600, 700, 800]},
+    "portrait_allowlist": true,
+    "validated_portrait_components_responsive": true
+  },
+  "verification": [
+    {"command": "npm run test:content-creator", "result": "PASS: 12 passed"},
+    {"command": "live Content Creator story + vertical producer contract test", "result": "PASS: 2 passed"},
+    {"command": "npm run typecheck", "result": "PASS: zero errors"},
+    {"command": "npx remotion compositions src/index.tsx", "result": "PASS: ExplainerStory and ExplainerVertical enumerate; two /public/ 404 warnings reproduced on clean upstream baseline"},
+    {"command": "make VENV_DIR=/home/wolnxpc/projects/Personal/automations/OpenMontage/.venv lint", "result": "PASS"},
+    {"command": "PYTHONDONTWRITEBYTECODE=1 PLAYWRIGHT_BROWSERS_PATH=/home/wolnxpc/.cache/ms-playwright make VENV_DIR=/home/wolnxpc/projects/Personal/automations/OpenMontage/.venv test", "result": "PASS: 850 passed, 9 skipped, 50 warnings, 1 subtest passed in 43.38s"},
+    {"command": "Content Creator pytest tests/test_registry.py -v", "result": "PASS: 9 passed in 0.02s"},
+    {"command": "required Remotion still matrix", "result": "PASS: six story stills and three allowed portrait stills"},
+    {"command": "Remotion H.264 story motion render", "result": "PASS: H.264/AAC, 1080x1920, 60fps, 474 frames, about 7.9 seconds"},
+    {"command": "raw RGB hash of top story band at frames 45 and 75", "result": "PASS: identical 1080568abece27f601cab3ebd1e3723787c01cea2de5055d654578daca352c02"}
+  ],
+  "playwright": {
+    "python_distribution_version": "1.61.0",
+    "cli_reported_version": "1.61.1",
+    "browsers_path": "/home/wolnxpc/.cache/ms-playwright",
+    "chromium_revision": 1228,
+    "headless_shell_revision": 1228,
+    "ffmpeg_revision": 1011,
+    "browser_tests_passed": true
+  },
+  "artifacts": {
+    "root": "/home/wolnxpc/projects/Personal/automations/OpenMontage/.worktrees/t_9f5efcba/projects/content-creator-integration-verification",
+    "contact_sheet": "contact-sheet.png",
+    "motion": {
+      "path": "motion/story-motion.mp4",
+      "sha256": "c83554f8a45abeada8be0fe42c0b03b13fcbd3fcae223df84b705fe009ca0e1f",
+      "size_bytes": 1133513,
+      "video": {"codec": "h264", "width": 1080, "height": 1920, "fps": 60, "frames": 474, "duration_seconds": 7.9},
+      "audio": {"codec": "aac", "sample_rate": 48000, "channels": 2}
+    },
+    "contact_sheet_sha256": "e500f798fdb07f74f8e7539da6a71c75df62dd38a6648815fa75de4ef6659a62",
+    "story_stills": [
+      "stills/story-static-a.png",
+      "stills/story-static-b.png",
+      "stills/long-carried-attribution.png",
+      "stills/story-chart.png",
+      "stills/presenter-fallback.png",
+      "stills/story-outro.png"
+    ],
+    "portrait_stills": [
+      "portrait/hero-title.png",
+      "portrait/callout.png",
+      "portrait/terminal-scene.png"
+    ],
+    "metadata": [
+      "metadata/ffprobe-story-motion.json",
+      "metadata/checksums.sha256",
+      "metadata/render-props.json",
+      "metadata/actual-vertical-props.json",
+      "metadata/story-static-a-top.sha256",
+      "metadata/story-static-b-top.sha256"
+    ]
+  },
+  "visual_review": {
+    "automated_claim": "Sampled frames have no obvious clipping or missing host/credit/outro; no aesthetic superiority claim is made.",
+    "required_reviewers": ["Clicky", "Wicky"],
+    "required_judgments": [
+      "host mouth timing, roaming, gestures, and distraction level",
+      "caption timing and crossfade rhythm",
+      "music/narration balance and swell audibility",
+      "long attribution readability on a real phone",
+      "real presenter crop, lip sync, and fallback transition",
+      "portrait framing for every allowed cut",
+      "30fps versus 60fps operating policy"
+    ]
+  },
+  "limitations": [
+    "Poppins requests are reduced but remain Google-font backed rather than self-hosted.",
+    "Render props remain a trusted-local input contract and can reference HTTP(S), data URLs, and absolute local paths.",
+    "Long attribution is ellipsized in-frame; human phone-size readability review remains required.",
+    "Generated audio verifies the audio path technically but does not establish subjective music balance.",
+    "The full suite passes with 50 existing dependency/API deprecation warnings.",
+    "No production switch, push, merge, remote write, public-fork change, service change, or credential change occurred."
+  ],
+  "ready_for_clicky_visual_review": true,
+  "ready_for_production_switch": false
+}
