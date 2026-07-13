@@ -5,6 +5,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import { getResponsiveSceneLayout } from "./responsiveLayout";
 
 interface HeroTitleProps {
   title: string;
@@ -13,7 +14,8 @@ interface HeroTitleProps {
 
 export const HeroTitle: React.FC<HeroTitleProps> = ({ title, subtitle }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
+  const layout = getResponsiveSceneLayout(width, height);
 
   // Staggered letter-by-letter spring
   const titleChars = title.split("");
@@ -27,11 +29,11 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({ title, subtitle }) => {
           "radial-gradient(ellipse at center, rgba(15,23,42,0.35) 0%, rgba(15,23,42,0.55) 100%)",
       }}
     >
-      <div style={{ textAlign: "center", maxWidth: "85%" }}>
+      <div style={{ textAlign: "center", maxWidth: layout.contentWidth }}>
         {/* Main title with per-character spring */}
         <div
           style={{
-            fontSize: 72,
+            fontSize: layout.heroTitleFontSize,
             fontWeight: 800,
             fontFamily: "Space Grotesk, Inter, system-ui, sans-serif",
             lineHeight: 1.2,
@@ -77,7 +79,7 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({ title, subtitle }) => {
                 fps,
                 config: { damping: 20 },
               }),
-              fontSize: 28,
+              fontSize: layout.heroSubtitleFontSize,
               fontWeight: 400,
               color: "#A78BFA",
               fontFamily: "Space Grotesk, Inter, system-ui, sans-serif",
@@ -103,7 +105,7 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({ title, subtitle }) => {
                 config: { damping: 15, stiffness: 60 },
               }),
               [0, 1],
-              [0, 400]
+              [0, Math.min(400, width * 0.37)]
             ),
           }}
         />

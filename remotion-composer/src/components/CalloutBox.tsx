@@ -5,6 +5,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import { getResponsiveSceneLayout } from "./responsiveLayout";
 
 type CalloutType = "info" | "warning" | "tip" | "quote";
 
@@ -41,12 +42,15 @@ export const CalloutBox: React.FC<CalloutBoxProps> = ({
   backgroundColor,
   textColor = "#1F2937",
   fontFamily = "Inter, system-ui, sans-serif",
-  fontSize = 32,
-  titleFontSize = 38,
+  fontSize,
+  titleFontSize,
   containerBackgroundColor = "#FFFFFF",
 }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
+  const layout = getResponsiveSceneLayout(width, height);
+  const resolvedFontSize = fontSize ?? layout.calloutFontSize;
+  const resolvedTitleFontSize = titleFontSize ?? layout.calloutTitleFontSize;
 
   const defaults = TYPE_DEFAULTS[type];
   const resolvedBorder = borderColor || defaults.border;
@@ -120,7 +124,7 @@ export const CalloutBox: React.FC<CalloutBoxProps> = ({
         style={{
           opacity,
           transform: `translateX(${slideX}px) scale(${scale})`,
-          width: "72%",
+          width: layout.contentWidth,
           maxWidth: 1380,
           position: "relative",
         }}
@@ -185,7 +189,7 @@ export const CalloutBox: React.FC<CalloutBoxProps> = ({
                 style={{
                   fontFamily,
                   fontWeight: 700,
-                  fontSize: titleFontSize,
+                  fontSize: resolvedTitleFontSize,
                   color: resolvedBorder,
                   lineHeight: 1.3,
                 }}
@@ -198,7 +202,7 @@ export const CalloutBox: React.FC<CalloutBoxProps> = ({
                 fontFamily: isQuote ? "Georgia, serif" : fontFamily,
                 fontWeight: isQuote ? 400 : 400,
                 fontStyle: isQuote ? "italic" : "normal",
-                fontSize,
+                fontSize: resolvedFontSize,
                 color: textColor,
                 lineHeight: 1.6,
               }}
