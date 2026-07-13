@@ -9,3 +9,10 @@ requests>=2.31
 google-auth>=2.0       # service-account auth for Google TTS + Imagen (Vertex AI)
 playwright>=1.61        # character_animation.py preview MP4 + reference-media page_scroll
                         # capture; after install run: playwright install chromium
+google-genai>=1.0.0    # Gemini Developer API clients for Lyria, Veo, and Gemini Omni
+openai>=2.44.0         # Videos API support for Sora 2
+
+# Backlot - the living storyboard (local board server)
+fastapi>=0.110
+uvicorn>=0.29
+watchfiles>=0.21
