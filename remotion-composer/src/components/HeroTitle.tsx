@@ -5,6 +5,7 @@ import {
   useCurrentFrame,
   useVideoConfig,
 } from "remotion";
+import { getResponsiveSceneLayout } from "./responsiveLayout";
 
 type HeroTitleProps = {
   title: string;
@@ -35,7 +36,10 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({
   scrimBackground = DEFAULT_SCRIM,
 }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
+  const layout = getResponsiveSceneLayout(width, height);
+  // Portrait frames scale with the frame; landscape keeps upstream's fixed sizing.
+  const portrait = layout.isPortrait;
 
   // Staggered letter-by-letter spring
   const titleChars = title.split("");
@@ -48,11 +52,11 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({
         background: scrimBackground,
       }}
     >
-      <div style={{ textAlign: "center", maxWidth: "85%" }}>
+      <div style={{ textAlign: "center", maxWidth: portrait ? layout.contentWidth : "85%" }}>
         {/* Main title with per-character spring */}
         <div
           style={{
-            fontSize: 72,
+            fontSize: portrait ? layout.heroTitleFontSize : 72,
             fontWeight: 800,
             fontFamily: "Space Grotesk, Inter, system-ui, sans-serif",
             lineHeight: 1.2,
@@ -98,7 +102,7 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({
                 fps,
                 config: { damping: 20 },
               }),
-              fontSize: 28,
+              fontSize: portrait ? layout.heroSubtitleFontSize : 28,
               fontWeight: 400,
               color: subtitleColor,
               fontFamily: "Space Grotesk, Inter, system-ui, sans-serif",
@@ -124,7 +128,7 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({
                 config: { damping: 15, stiffness: 60 },
               }),
               [0, 1],
-              [0, 400]
+              [0, Math.min(400, width * 0.37)]
             ),
           }}
         />

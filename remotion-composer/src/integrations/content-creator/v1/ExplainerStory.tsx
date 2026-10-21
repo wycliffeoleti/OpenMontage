@@ -13,28 +13,30 @@ import {
 } from "remotion";
 import { loadFont } from "@remotion/google-fonts/Poppins";
 import { SceneCanvas, type Scene } from "./StoryScenes";
+import { validateStoryProps } from "./contracts";
+import {
+  carryBeatMedia,
+  isVideoPresenterSource,
+  resolveContentCreatorAsset,
+} from "./media";
 
-const { fontFamily } = loadFont();
+const { fontFamily } = loadFont("normal", {
+  weights: ["400", "500", "600", "700", "800"],
+  subsets: ["latin"],
+});
 
 // ---------------------------------------------------------------------------
 // ExplainerStory — a 3-band vertical (1080x1920) "illustrated story" layout:
-//   TOP    : one image per story beat (Ken Burns), swaps as the narration moves
+//   TOP    : one static image/video/scene per story beat, crossfaded without zoom
 //   MIDDLE : word captions (the centered divider)
 //   BOTTOM : a presenter — placeholder avatar now, the user's AI clone later
 // ---------------------------------------------------------------------------
 
 function resolveAsset(src: string): string {
-  if (src.startsWith("http://") || src.startsWith("https://") || src.startsWith("data:")) {
-    return src;
-  }
-  const clean = src.replace(/^file:\/\/\/?/, "");
-  if (clean.startsWith("/") || /^[A-Za-z]:[\\/]/.test(clean)) {
-    return `file:///${clean.replace(/\\/g, "/")}`;
-  }
-  return staticFile(clean);
+  return resolveContentCreatorAsset(src, staticFile);
 }
 
-interface Beat {
+interface Beat extends Record<string, unknown> {
   imageSrc?: string;
   videoSrc?: string; // real b-roll clip for this beat (muted, cover-fit)
   scene?: Scene;     // motion-graphics scene (preferred over image/video when set)
@@ -59,7 +61,7 @@ interface AudioLayer {
   swellToVolume?: number;    // outro level it rises to (e.g. 0.8)
 }
 
-export interface ExplainerStoryProps {
+export interface ExplainerStoryProps extends Record<string, unknown> {
   beats: Beat[];
   captions: WordCaption[];
   presenterSrc?: string;
@@ -444,6 +446,7 @@ const OutroCard: React.FC<{ text: string; accent: string }> = ({ text, accent })
 const STORY_FPS = 60; // cinematic-smooth motion graphics; platforms cap at 60
 
 const calculateStoryMetadata: CalculateMetadataFunction<ExplainerStoryProps> = async ({ props }) => {
+  validateStoryProps(props);
   const beats = props.beats || [];
   const lastEnd = beats.length ? Math.max(...beats.map((b) => b.outSeconds || 0)) : 20;
   return { durationInFrames: Math.ceil((lastEnd + (props.outroSeconds ?? 0.8)) * STORY_FPS), fps: STORY_FPS };
@@ -466,23 +469,11 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
   const CAP_H = Math.round(height * 0.08);        // middle: captions hug the font (58px + air)
   const PRES_TOP = CAP_TOP + CAP_H;               // bottom: presenter (0.59+0.08 = same 0.67 as before)
 
-  // carry the last available image forward if a beat has no visual of its own
-  // (its credit rides along — attribution must match what's on screen)
-  let lastImg: string | undefined;
-  let lastCredit: string | undefined;
-  const filled = beats.map((b) => {
-    if (b.scene) return b; // motion-graphics beats never carry images
-    if (b.imageSrc) {
-      lastImg = b.imageSrc;
-      lastCredit = b.credit;
-    }
-    const inherits = !b.imageSrc && !b.videoSrc;
-    return {
-      ...b,
-      imageSrc: b.imageSrc || (b.videoSrc ? undefined : lastImg),
-      credit: inherits ? lastCredit : b.credit,
-    };
-  });
+  // Carry media and its compliance attribution together. Scene beats remain
+  // self-contained and therefore never inherit prior media.
+  const filled = carryBeatMedia(beats).map((beat) =>
+    beat.scene ? { ...beat, imageSrc: undefined, videoSrc: undefined, credit: beat.credit } : beat,
+  );
 
   return (
     <AbsoluteFill style={{ backgroundColor: BG }}>
@@ -560,7 +551,7 @@ export const ExplainerStory: React.FC<ExplainerStoryProps> = ({
         }}
       >
         {presenterSrc ? (
-          /\.(mp4|webm|mov)$/i.test(presenterSrc) ? (
+          isVideoPresenterSource(presenterSrc) ? (
             // The digital clone: a lip-synced talking-head clip (muted — the
             // composition's narration track IS its voice).
             <OffthreadVideo

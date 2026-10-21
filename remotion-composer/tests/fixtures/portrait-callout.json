@@ -1,0 +1,21 @@
+{
+  "theme": "flat-motion-graphics",
+  "cuts": [
+    {
+      "id": "callout",
+      "type": "callout",
+      "source": "",
+      "title": "Portrait-safe callout",
+      "text": "Content stays readable with mobile-safe width, type scale, and padding.",
+      "callout_type": "tip",
+      "accentColor": "#22D3EE",
+      "backgroundColor": "#1E293B",
+      "color": "#F8FAFC",
+      "in_seconds": 0,
+      "out_seconds": 2
+    }
+  ],
+  "overlays": [],
+  "captions": [],
+  "audio": {}
+}

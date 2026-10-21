@@ -1,6 +1,5 @@
 import { Composition, CalculateMetadataFunction } from "remotion";
 import { Explainer, ExplainerProps } from "./Explainer";
-import { ExplainerStory, calculateStoryMetadata } from "./ExplainerStory";
 import {
   CinematicRenderer,
   calculateCinematicMetadata,
@@ -17,6 +16,7 @@ import { ProductReveal, ProductRevealProps } from "./components/ProductReveal";
 import { CaptionOverlay, WordCaption } from "./components/CaptionOverlay";
 import { CollageBurst, CollageBurstProps } from "./CollageBurst";
 import { LyricOverlay, LyricOverlayProps } from "./LyricOverlay";
+import { ContentCreatorCompositions } from "./integrations/content-creator/v1/ContentCreatorCompositions";
 
 // ---------------------------------------------------------------------------
 // Theme System — prevents every video from looking like dark fintech
@@ -136,6 +136,7 @@ const calculateMetadata: CalculateMetadataFunction<ExplainerProps> = async ({
 export const Root: React.FC = () => {
   return (
     <>
+      <ContentCreatorCompositions />
       <Composition
         id="Explainer"
         component={Explainer}
@@ -150,35 +151,6 @@ export const Root: React.FC = () => {
           audio: {},
         }}
         calculateMetadata={calculateMetadata}
-      />
-      <Composition
-        id="ExplainerVertical"
-        component={Explainer}
-        durationInFrames={30 * 60}
-        fps={30}
-        width={1080}
-        height={1920}
-        defaultProps={{
-          cuts: [],
-          overlays: [],
-          captions: [],
-          audio: {},
-        }}
-        calculateMetadata={calculateMetadata}
-      />
-      <Composition
-        id="ExplainerStory"
-        component={ExplainerStory}
-        durationInFrames={30 * 60}
-        fps={60}
-        width={1080}
-        height={1920}
-        defaultProps={{
-          beats: [],
-          captions: [],
-          audio: {},
-        }}
-        calculateMetadata={calculateStoryMetadata}
       />
       <Composition
         id="CinematicRenderer"

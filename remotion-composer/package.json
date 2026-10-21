@@ -5,7 +5,9 @@
   "scripts": {
     "start": "npx remotion studio",
     "build": "npx remotion render src/index.tsx Explainer out/video.mp4",
-    "upgrade": "npx remotion upgrade"
+    "upgrade": "npx remotion upgrade",
+    "typecheck": "tsc --noEmit",
+    "test:content-creator": "NODE_NO_WARNINGS=1 node --experimental-strip-types --test tests/content-creator-contract.test.ts tests/content-creator-media.test.ts tests/content-creator-portrait-layout.test.ts"
   },
   "dependencies": {
     "@remotion/captions": "^4.0.484",

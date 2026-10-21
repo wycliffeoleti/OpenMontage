@@ -1,4 +1,5 @@
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { getResponsiveSceneLayout } from "./responsiveLayout";
 
 /**
  * TerminalScene — animated terminal with typed commands and scrolling output.
@@ -49,7 +50,10 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
   backgroundColor = "#0B0F1A",
 }) => {
   const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const { fps, width, height } = useVideoConfig();
+  const layout = getResponsiveSceneLayout(width, height);
+  // Portrait frames scale with the frame; landscape keeps upstream's fixed sizing.
+  const portrait = layout.isPortrait;
 
   // Lay out timing in frames
   const lines: RenderedLine[] = [];
@@ -112,13 +116,13 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
         background: backgroundColor,
         justifyContent: "center",
         alignItems: "center",
-        padding: "80px",
+        padding: portrait ? layout.scenePadding : "80px",
         fontFamily: "'JetBrains Mono', 'Consolas', 'Monaco', monospace",
       }}
     >
       <div
         style={{
-          width: "85%",
+          width: portrait ? layout.contentWidth : "85%",
           maxWidth: 1600,
           height: "80%",
           opacity: windowOpacity,
@@ -160,8 +164,10 @@ export const TerminalScene: React.FC<TerminalSceneProps> = ({
         {/* Terminal body */}
         <div
           style={{
-            padding: "32px 40px",
-            fontSize: 26,
+            padding: portrait
+              ? `${Math.round(layout.scenePadding * 0.6)}px ${Math.round(layout.scenePadding * 0.75)}px`
+              : "32px 40px",
+            fontSize: portrait ? layout.terminalFontSize : 26,
             lineHeight: 1.55,
             color: "#E5E7EB",
             height: "calc(100% - 46px)",

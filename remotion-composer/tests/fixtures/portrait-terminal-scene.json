@@ -1,0 +1,24 @@
+{
+  "theme": "flat-motion-graphics",
+  "cuts": [
+    {
+      "id": "terminal",
+      "type": "terminal_scene",
+      "source": "",
+      "terminalTitle": "Content Creator contract",
+      "prompt": ">",
+      "accentColor": "#22D3EE",
+      "steps": [
+        {"kind": "cmd", "text": "validate --portrait", "typeSpeed": 0.02},
+        {"kind": "out", "text": "hero_title: pass"},
+        {"kind": "out", "text": "callout: pass"},
+        {"kind": "out", "text": "terminal_scene: pass"}
+      ],
+      "in_seconds": 0,
+      "out_seconds": 2.5
+    }
+  ],
+  "overlays": [],
+  "captions": [],
+  "audio": {}
+}
