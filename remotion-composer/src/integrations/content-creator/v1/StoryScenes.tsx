@@ -1,11 +1,8 @@
 import React from "react";
 import { AbsoluteFill, interpolate, spring, useCurrentFrame, useVideoConfig } from "remotion";
-import { loadFont } from "@remotion/google-fonts/Poppins";
+import { loadPoppins } from "../../../lib/localFonts";
 
-const { fontFamily } = loadFont("normal", {
-  weights: ["400", "500", "600", "700", "800"],
-  subsets: ["latin"],
-});
+const { fontFamily } = loadPoppins(["400", "500", "600", "700", "800"]);
 
 // ---------------------------------------------------------------------------
 // StoryScenes — the motion-graphics canvas for ExplainerStory's top band.

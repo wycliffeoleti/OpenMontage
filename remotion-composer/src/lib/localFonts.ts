@@ -3,6 +3,11 @@ import { cancelRender, continueRender, delayRender } from "remotion";
 import playfairItalicUrl from "../fonts/PlayfairDisplay-Italic-latin.woff2";
 import playfairUrl from "../fonts/PlayfairDisplay-latin.woff2";
 import spaceGroteskUrl from "../fonts/SpaceGrotesk-latin.woff2";
+import poppins400Url from "../fonts/Poppins-400-latin.woff2";
+import poppins500Url from "../fonts/Poppins-500-latin.woff2";
+import poppins600Url from "../fonts/Poppins-600-latin.woff2";
+import poppins700Url from "../fonts/Poppins-700-latin.woff2";
+import poppins800Url from "../fonts/Poppins-800-latin.woff2";
 
 /**
  * Fonts bundled with the compositions instead of fetched from Google Fonts at
@@ -27,7 +32,7 @@ const LATIN =
 
 const loaded = new Set<string>();
 
-const register = (family: string, url: string, style: "normal" | "italic", weights: string[]) => {
+const register = (family: string, url: string, style: "normal" | "italic", weights: string[], unicodeRange = LATIN) => {
   if (typeof FontFace === "undefined") return family;
   for (const weight of weights) {
     const key = `${family}-${style}-${weight}`;
@@ -35,7 +40,7 @@ const register = (family: string, url: string, style: "normal" | "italic", weigh
     loaded.add(key);
     queueMicrotask(() => {
       const handle = delayRender(`Loading bundled font ${key}`);
-      const face = new FontFace(family, `url(${url}) format('woff2')`, { weight, style, unicodeRange: LATIN });
+      const face = new FontFace(family, `url(${url}) format('woff2')`, { weight, style, unicodeRange });
       face
         .load()
         .then(() => {
@@ -53,3 +58,17 @@ export const loadSpaceGrotesk = (weights: string[]) => ({ fontFamily: register("
 export const loadPlayfair = (style: "normal" | "italic", weights: string[]) => ({
   fontFamily: register("Playfair Display", style === "italic" ? playfairItalicUrl : playfairUrl, style, weights),
 });
+
+// Exact Poppins v24 normal/latin files previously loaded by google-fonts.
+// Source URLs, hashes and SIL OFL licence are retained in ../fonts/.
+const poppinsUrls: Record<string, string> = {
+  "400": poppins400Url, "500": poppins500Url, "600": poppins600Url,
+  "700": poppins700Url, "800": poppins800Url,
+};
+const POPPINS_LATIN = "U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD";
+export const loadPoppins = (weights: string[]) => {
+  for (const weight of weights) {
+    register("Poppins", poppinsUrls[weight], "normal", [weight], POPPINS_LATIN);
+  }
+  return { fontFamily: "Poppins" };
+};

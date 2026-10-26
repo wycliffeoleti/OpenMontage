@@ -11,7 +11,7 @@ import {
   useVideoConfig,
   CalculateMetadataFunction,
 } from "remotion";
-import { loadFont } from "@remotion/google-fonts/Poppins";
+import { loadPoppins } from "../../../lib/localFonts";
 import { SceneCanvas, type Scene } from "./StoryScenes";
 import { validateStoryProps } from "./contracts";
 import {
@@ -20,10 +20,7 @@ import {
   resolveContentCreatorAsset,
 } from "./media";
 
-const { fontFamily } = loadFont("normal", {
-  weights: ["400", "500", "600", "700", "800"],
-  subsets: ["latin"],
-});
+const { fontFamily } = loadPoppins(["400", "500", "600", "700", "800"]);
 
 // ---------------------------------------------------------------------------
 // ExplainerStory — a 3-band vertical (1080x1920) "illustrated story" layout:
