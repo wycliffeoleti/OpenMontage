@@ -185,3 +185,7 @@ This stage gates on human approval (`human_approval_default: true`). After revie
 checkpoint with `status="awaiting_human"`, present the summary (the Backlot board renders
 the artifact), and **END YOUR TURN**. Do not start the next stage in the same response.
 Approval is per-gate — an earlier "go ahead" does not cover this gate.
+
+## Free local audio
+
+When the approved audio plan uses local generation, select `comfyui_music` with the configured ACE-Step profile and `comfyui_sfx` for effects/ambience. Check their live registry status and model files first. Read `.agents/skills/comfyui/SKILL.md`. Keep all outputs inside the project and record music and effect purposes, timings, source models, and levels in the audio cue sheet. These routes use the local GPU and have no API charge. If unavailable, report the missing server/model/access; do not substitute a paid provider.

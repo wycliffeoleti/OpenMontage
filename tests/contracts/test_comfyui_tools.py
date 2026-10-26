@@ -951,6 +951,10 @@ class TestCustomWorkflowContract:
 
 class TestComfyUIMusic:
 
+    @pytest.fixture(autouse=True)
+    def isolated_music_profile(self, monkeypatch):
+        monkeypatch.delenv("COMFYUI_MUSIC_PROFILE", raising=False)
+
     def test_capability_and_provider(self):
         tool = ComfyUIMusic()
         assert tool.capability == "music_generation"

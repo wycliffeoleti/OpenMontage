@@ -7,8 +7,11 @@ track plus one music bed, with ducking enabled (the default) — always failed.
 """
 
 import shutil
+import math
+import struct
 import subprocess
 import sys
+import wave
 from pathlib import Path
 
 import pytest
@@ -87,3 +90,40 @@ def test_full_mix_multi_narration_plus_music_with_ducking(tmp_path):
 
     assert result.success is True, result.error
     assert out.exists() and _has_audio(out)
+
+
+@pytest.mark.parametrize('operation', ['duck', 'full_mix'])
+def test_ducking_times_keep_the_public_millisecond_units(tmp_path, monkeypatch, operation):
+    speech, music = tmp_path/'speech.wav', tmp_path/'music.wav'
+    speech.touch(); music.touch()
+    commands = []
+    tool = AudioMixer()
+    def run(command, **kwargs):
+        commands.append(command)
+        return subprocess.CompletedProcess(command, 0, stdout='', stderr='')
+    monkeypatch.setattr(tool, 'run_command', run)
+    result = tool.execute({'operation':operation, 'tracks':[
+        {'path':str(speech),'role':'speech'}, {'path':str(music),'role':'music'}],
+        'ducking':{'attack_ms':40,'release_ms':700},
+        'output_path':str(tmp_path/'mix.wav')})
+    assert result.success, result.error
+    graph=commands[-1][commands[-1].index('-filter_complex')+1]
+    assert 'attack=40:release=700:' in graph
+
+
+def test_full_mix_music_returns_gradually_after_speech(tmp_path):
+    speech, music, output = tmp_path/'speech.wav', tmp_path/'music.wav', tmp_path/'mix.wav'
+    _sine(speech, 600, 1)
+    _sine(music, 220, 3)
+    result = AudioMixer().execute({'operation':'full_mix','tracks':[
+        {'path':str(speech),'role':'speech'},{'path':str(music),'role':'music'}],
+        'ducking':{'attack_ms':40,'release_ms':700}, 'normalize':False,
+        'target_duration':3,'output_path':str(output)})
+    assert result.success, result.error
+    def rms(start, end):
+        with wave.open(str(output),'rb') as handle:
+            handle.setpos(round(start*handle.getframerate()))
+            raw=handle.readframes(round((end-start)*handle.getframerate()))
+        samples=struct.unpack(f'<{len(raw)//2}h', raw)
+        return math.sqrt(sum(x*x for x in samples)/len(samples))
+    assert rms(2.5,2.6)>1.4*rms(1.05,1.1)

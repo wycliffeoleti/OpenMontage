@@ -526,6 +526,16 @@ Before committing to execution, present:
 
 If a user prefers a specific vendor and that tool is available, surface it directly. Do not hide provider choice.
 
+### Default Audio Production
+
+The owner's default for future videos is a complete, story-specific sound pass: music, meaningful sound effects, transitions/reveals, and suitable atmosphere. Treat audio as a production layer from the proposal onward. A quiet pad plus a few generic clicks does not automatically satisfy this preference. Adapt the sound language to each subject and its pacing; do not turn the mouse video's score, theme, or cue layout into a fixed template.
+
+- **Proposal:** resolve a real music source and describe the energy arc and effect palette. Read `skills/creative/sound-design.md`. Check live tool availability and source rights; existing mixer/generator classes do not prove credentials, models, or assets are configured. Respect explicit user opt-outs, source-audio-led performances, and intentional silence. Do not ask again whether ordinary music and SFX are wanted when this default and the approved scope already cover them.
+- **Scene plan/assets:** plan and source the relevant action, movement, interface, transition, and reveal sounds alongside the visuals. Keep a project-local `artifacts/audio-cue-sheet.json` recording cue purpose, scene, asset path, onset, duration, and level. Store its reference in canonical artifact metadata. Use actual narration/animation timing, not a copied list of fixed timestamps. Do not add an effect to every word or caption.
+- **Edit/compose:** mix narration, music, effects, and any original ambience as distinct layers. Protect narration with ducking and room in its frequency range; allow music to rise in pauses and at intentional story beats. For narration-led explainers, start around 18–20 dB below speech and adjust to the content. Preserve meaningful location sound for footage-led work. A pure music/source-audio piece does not need narration ducking.
+- **Review:** inspect the actual final mix and compare it with the audio plan and cue sheet. Verify that music and intended effects survived rendering, dialogue remains intelligible, sound events match visual actions, duration/sync are preserved, and loudness/true peak match the delivery target. File existence alone is not an audio-quality check. Record absent or unavailable elements and perceptual-review limits honestly.
+- **Sources and authorization:** prefer usable, licensed local assets or approved providers. Report unavailable sources rather than silently dropping music/SFX or disguising a minimal fallback as a finished score. Existing local tools may be used within the approved task; paid generation, uploads, publishing, protected-checkout edits, and provider/model changes retain their existing authorization rules. Keep biometric voice assets local.
+
 ### Music Plan (Mandatory)
 
 Music is a critical part of any video. **Surface the music situation to the user at proposal/idea time** — do not silently defer it to the asset stage where a failure becomes expensive.

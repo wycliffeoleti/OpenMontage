@@ -74,9 +74,16 @@ Use this skill before calling `comfyui_image`, `comfyui_video`, or `comfyui_musi
 
 ## Music (`comfyui_music`)
 
-- Bundled default is ACE-Step v1 (3.5B) text-to-audio, built from ComfyUI's *native* `TextEncodeAceStepAudio`/`EmptyAceStepLatentAudio` nodes (core, not a third-party pack) -- unlike ACE-Step 1.5 or other custom node packs, v1's interface is standardized enough to bundle safely.
+- `text_encoder_device="default"` uses native automatic GPU placement; `"cpu"` provides more VRAM headroom at lower speed. `COMFYUI_MUSIC_TEXT_ENCODER_DEVICE` configures the workstation default; explicit input wins. The CLI exposes `--text-encoder-device` and `--bpm`. Empty lyrics on the 1.5 profile use `[Instrumental]`, following the current upstream tutorial.
+
+- `model_profile="ace-step-1.5-turbo"` selects the bundled native ACE-Step 1.5 Turbo workflow (8 sampling steps, batch one, 0.6B encoder + 1.7B language model). `COMFYUI_MUSIC_PROFILE` supplies the workstation default; an explicit input wins, and unset configuration keeps the v1 default. Use the live registry status to check the selected model stack.
+- Local effects and ambience use `comfyui_sfx` with `prompt`, `duration_seconds` (up to 47), `seed`, and a `.wav` `output_path`. It uses Stable Audio Open 1.0, saves native FLAC, and converts to PCM WAV. Check the model license and download access. These local tools have no paid generation fallback.
+- The shared command is `.venv/bin/python -m tools.audio.local_audio music|sfx --prompt "..." --duration-seconds 5 --output-path /absolute/output.wav` (music requires `.mp3`). Start the local server first; commands retain output provenance beside the audio.
+
+
+- Bundled default is ACE-Step v1 (3.5B) text-to-audio, built from ComfyUI's *native* `TextEncodeAceStepAudio`/`EmptyAceStepLatentAudio` nodes (core, not a third-party pack).
 - `prompt` maps to the bundled workflow's `tags` field (style/genre/mood, e.g. `"upbeat electronic pop, female vocals"`), matching the same "prompt = music description" convention `suno_music` uses. `lyrics` is a separate optional field -- leave empty for instrumental, or use `[verse]`/`[chorus]`/`[bridge]` structure tags and `[zh]`/`[ja]`/`[ko]`-style language-code prefixes for non-English lines.
 - `duration_seconds`, `steps`, `cfg`, `lyrics_strength`, and `seed` are patchable on the bundled workflow. Missing `ace_step_v1_3.5b.safetensors` surfaces through the same `data.missing_models[]` contract as image/video.
-- Need ACE-Step 1.5, a different node pack, or a non-ACE-Step audio model? Fall back to `workflow_json`/`workflow_path` + `output_node`, exactly like a custom image/video workflow -- in that mode `prompt` becomes provenance/logging only again and must already be baked into the graph.
+- Need a different node pack or a non-ACE-Step audio model? Fall back to `workflow_json`/`workflow_path` + `output_node`, exactly like a custom image/video workflow -- in that mode `prompt` becomes provenance/logging only again and must already be baked into the graph.
 - `output_node` (bundled or custom) should be the node that writes the final audio -- the bundled workflow's is `SaveAudioMP3`. The client reads artifacts from that node's `"audio"` output key (parallel to `"images"` for image/video savers).
 - For custom workflows, provide `workflow_name`/`workflow_model`/`workflow_model_stack` for provenance exactly as you would for a custom image/video workflow.

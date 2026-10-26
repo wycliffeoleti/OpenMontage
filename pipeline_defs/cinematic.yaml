@@ -180,6 +180,8 @@ stages:
       - pixabay_music
       - freesound_music
       - music_gen
+      - comfyui_music
+      - comfyui_sfx
     tools_available:
       - subtitle_gen
       - audio_enhance
@@ -193,6 +195,8 @@ stages:
       - pixabay_music
       - freesound_music
       - music_gen
+      - comfyui_music
+      - comfyui_sfx
     checkpoint_required: true
     human_approval_default: true
     review_focus:

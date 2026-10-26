@@ -1,16 +1,15 @@
 """ComfyUI music generation via a local or remote ComfyUI server.
 
-Default workflow: ACE-Step v1 (3.5B) text-to-audio using ComfyUI's native
-``TextEncodeAceStepAudio``/``EmptyAceStepLatentAudio`` nodes (built into
-ComfyUI core, not a third-party pack). Custom workflows are still accepted
-via ``workflow_json``/``workflow_path`` for other ACE-Step node packs, other
-versions (e.g. ACE-Step 1.5), or entirely different audio models -- the same
-override contract ``comfyui_image``/``comfyui_video`` offer.
+Native bundled profiles cover ACE-Step v1 and ACE-Step 1.5 Turbo. An explicit
+model_profile overrides COMFYUI_MUSIC_PROFILE; unset configuration retains v1.
+Custom API-format workflows remain supported with an explicit output node.
 """
 
 from __future__ import annotations
 
 import json
+import math
+import os
 import shutil
 import subprocess
 import time
@@ -42,11 +41,18 @@ _WORKFLOWS = Path(__file__).resolve().parent.parent / "_comfyui" / "workflows"
 
 # Model required by the bundled ACE-Step v1 workflow
 _REQUIRED_MODELS = ["ace_step_v1_3.5b.safetensors"]
+_PROFILES = {
+    "ace-step-1": ("ace-step-1-t2a", "ace-step-v1-3.5b", _REQUIRED_MODELS),
+    "ace-step-1.5-turbo": ("ace-step-1.5-t2a", "ace-step-1.5-turbo", [
+        "acestep_v1.5_turbo.safetensors", "qwen_0.6b_ace15.safetensors",
+        "qwen_1.7b_ace15.safetensors", "ace_1.5_vae.safetensors",
+    ]),
+}
 
 
 class ComfyUIMusic(BaseTool):
     name = "comfyui_music"
-    version = "0.2.0"
+    version = "0.3.0"
     tier = ToolTier.GENERATE
     capability = "music_generation"
     provider = "comfyui"
@@ -60,8 +66,9 @@ class ComfyUIMusic(BaseTool):
     install_instructions = (
         "Start a ComfyUI server and set COMFYUI_SERVER_URL "
         "(default http://localhost:8188).\n"
-        "Requires ace_step_v1_3.5b.safetensors in ComfyUI's checkpoints "
-        "directory for the bundled workflow.\n"
+        "Set COMFYUI_MUSIC_PROFILE=ace-step-1.5-turbo for the split ACE-Step 1.5 "
+        "model stack reported by get_info(). Unset configuration uses v1 and "
+        "requires ace_step_v1_3.5b.safetensors in checkpoints.\n"
         "Running a separate ComfyUI instance for music? Set "
         "COMFYUI_MUSIC_SERVER_URL instead -- it takes priority over "
         "COMFYUI_SERVER_URL for this tool only."
@@ -78,19 +85,22 @@ class ComfyUIMusic(BaseTool):
     }
     best_for = [
         "local GPU music generation without API costs",
-        "instrumentals and songs with lyrics via the bundled ACE-Step v1 workflow",
+        "instrumentals and songs via native ACE-Step v1 or 1.5 Turbo",
         "full control over sampling or other ACE-Step versions/node packs via custom ComfyUI workflows",
     ]
     not_good_for = [
         "setups without a running ComfyUI server",
         "CPU-only machines",
     ]
-    fallback_tools = ["suno_music", "music_gen"]
+    fallback_tools = ["music_library"]
 
     input_schema = {
         "type": "object",
         "required": ["prompt"],
         "properties": {
+            "model_profile": {"type": "string", "enum": list(_PROFILES)},
+            "text_encoder_device": {"type": "string", "enum": ["default", "cpu"],
+                "description": "ACE-Step 1.5: native automatic GPU placement or CPU encoding."},
             "prompt": {
                 "type": "string",
                 "description": (
@@ -109,8 +119,10 @@ class ComfyUIMusic(BaseTool):
                 ),
             },
             "duration_seconds": {"type": "number", "default": 120.0},
-            "steps": {"type": "integer", "default": 50},
-            "cfg": {"type": "number", "default": 5.0},
+            "bpm": {"type": "integer", "minimum": 10, "maximum": 300,
+                    "description": "Explicit ACE-Step 1.5 tempo; defaults to 100."},
+            "steps": {"type": "integer", "description": "Defaults to 8 for 1.5 Turbo, 50 for v1."},
+            "cfg": {"type": "number", "description": "Defaults to 1 for 1.5 Turbo, 5 for v1."},
             "lyrics_strength": {"type": "number", "default": 0.99},
             "seed": {"type": "integer", "description": "Random if omitted"},
             "output_path": {"type": "string", "description": "Where to save the audio"},
@@ -168,10 +180,34 @@ class ComfyUIMusic(BaseTool):
     def get_status(self) -> ToolStatus:
         if not self._client.is_available():
             return ToolStatus.UNAVAILABLE
-        _, missing = self._client.check_models(_REQUIRED_MODELS)
+        try:
+            profile = self._profile({})
+            if profile == "ace-step-1.5-turbo":
+                self._text_encoder_device({})
+        except ValueError:
+            return ToolStatus.UNAVAILABLE
+        _, missing = self._client.check_models(_PROFILES[profile][2])
         if missing:
             return ToolStatus.DEGRADED
+        if profile == "ace-step-1.5-turbo":
+            graph = ComfyUIClient.load_workflow(_WORKFLOWS / "ace-step-1.5-t2a.json")
+            if any(not self._client.has_node(node['class_type']) for node in graph.values()):
+                return ToolStatus.DEGRADED
         return ToolStatus.AVAILABLE
+
+    @staticmethod
+    def _profile(inputs: dict[str, Any]) -> str:
+        profile = inputs.get("model_profile") or os.environ.get("COMFYUI_MUSIC_PROFILE", "ace-step-1")
+        if profile not in _PROFILES:
+            raise ValueError(f"Unknown local music model_profile: {profile}")
+        return profile
+
+    @staticmethod
+    def _text_encoder_device(inputs: dict[str, Any]) -> str:
+        device = inputs.get("text_encoder_device") or os.environ.get("COMFYUI_MUSIC_TEXT_ENCODER_DEVICE", "cpu")
+        if device not in ("default", "cpu"):
+            raise ValueError(f"Unknown music text_encoder_device: {device}")
+        return device
 
     def estimate_cost(self, inputs: dict[str, Any]) -> float:
         return 0.0
@@ -182,7 +218,11 @@ class ComfyUIMusic(BaseTool):
     def get_info(self) -> dict[str, Any]:
         info = super().get_info()
         info["setup_offer"] = self.setup_offer
-        info["bundled_model_stack"] = BUNDLED_MODEL_STACKS["ace-step-1-t2a"]
+        key = _PROFILES[self._profile({})][0]
+        info["bundled_model_stack"] = BUNDLED_MODEL_STACKS[key]
+        info["model_profile"] = self._profile({})
+        if info["model_profile"] == "ace-step-1.5-turbo":
+            info["text_encoder_device"] = os.environ.get("COMFYUI_MUSIC_TEXT_ENCODER_DEVICE", "cpu")
         return info
 
     def _log_progress(self, data: dict) -> None:
@@ -197,6 +237,22 @@ class ComfyUIMusic(BaseTool):
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         custom_workflow = bool(inputs.get("workflow_json") or inputs.get("workflow_path"))
+        try:
+            profile = self._profile(inputs) if not custom_workflow else "ace-step-1"
+            if profile == "ace-step-1.5-turbo":
+                self._text_encoder_device(inputs)
+                duration = float(inputs.get('duration_seconds', 120))
+                if not math.isfinite(duration) or not 1 <= duration <= 600:
+                    raise ValueError('Music duration_seconds must be between 1 and 600 seconds.')
+                if not str(inputs.get('prompt', '')).strip():
+                    raise ValueError('A music prompt is required.')
+                if inputs.get('output_path') and Path(inputs['output_path']).suffix.lower() != '.mp3':
+                    raise ValueError('Bundled music output_path must have a .mp3 extension.')
+        except ValueError as exc:
+            return ToolResult(success=False, error=str(exc))
+        if profile == "ace-step-1.5-turbo" and not inputs.get("lyrics"):
+            inputs = {**inputs, "lyrics": "[Instrumental]"}
+        workflow_key = _PROFILES[profile][0]
         if custom_workflow and not inputs.get("output_node"):
             return ToolResult(
                 success=False,
@@ -210,14 +266,14 @@ class ComfyUIMusic(BaseTool):
             return ToolResult(success=False, error=self._client.unavailable_reason())
 
         if not custom_workflow:
-            _, missing = self._client.check_models(_REQUIRED_MODELS)
+            _, missing = self._client.check_models(_PROFILES[profile][2])
             if missing:
                 return ToolResult(
                     success=False,
                     data=missing_models_payload(
                         missing,
-                        workflow_key="ace-step-1-t2a",
-                        workflow_name="ace-step-1-t2a.json",
+                        workflow_key=workflow_key,
+                        workflow_name=f"{workflow_key}.json",
                     ),
                     error=(
                         f"ComfyUI server is running but missing required models: "
@@ -237,21 +293,28 @@ class ComfyUIMusic(BaseTool):
                 workflow = self._load_custom_workflow(inputs)
                 output_node = str(inputs["output_node"])
             else:
-                workflow = ComfyUIClient.load_workflow(_WORKFLOWS / "ace-step-1-t2a.json")
+                workflow = ComfyUIClient.load_workflow(_WORKFLOWS / f"{workflow_key}.json")
                 workflow = ComfyUIClient.patch_workflow(workflow, {
                     "2": {
                         "tags": inputs["prompt"],
                         "lyrics": inputs.get("lyrics", ""),
-                        "lyrics_strength": inputs.get("lyrics_strength", 0.99),
                     },
                     "4": {"seconds": inputs.get("duration_seconds", 120.0)},
                     "8": {
                         "seed": seed,
-                        "steps": inputs.get("steps", 50),
-                        "cfg": inputs.get("cfg", 5.0),
+                        "steps": inputs.get("steps", 8 if profile == "ace-step-1.5-turbo" else 50),
+                        "cfg": inputs.get("cfg", 1.0 if profile == "ace-step-1.5-turbo" else 5.0),
                     },
                     "10": {"filename_prefix": output_path.stem},
                 })
+                if profile == "ace-step-1.5-turbo":
+                    workflow["11"]["inputs"]["device"] = self._text_encoder_device(inputs)
+                    workflow["2"]["inputs"].update(
+                        duration=inputs.get("duration_seconds", 120.0), seed=seed,
+                        bpm=inputs.get("bpm", 100),
+                    )
+                else:
+                    workflow["2"]["inputs"]["lyrics_strength"] = inputs.get("lyrics_strength", 0.99)
                 output_node = "10"
 
             provenance = self._workflow_provenance(inputs, custom_workflow, output_node, workflow)
@@ -311,7 +374,7 @@ class ComfyUIMusic(BaseTool):
     @staticmethod
     def _model_name(inputs: dict[str, Any], custom_workflow: bool) -> str:
         if not custom_workflow:
-            return "ace-step-v1-3.5b"
+            return _PROFILES[ComfyUIMusic._profile(inputs)][1]
         return (
             inputs.get("workflow_model")
             or inputs.get("model")
@@ -327,12 +390,21 @@ class ComfyUIMusic(BaseTool):
         workflow: dict[str, Any],
     ) -> dict[str, Any]:
         if not custom_workflow:
+            key = _PROFILES[ComfyUIMusic._profile(inputs)][0]
             return {
                 "source": "bundled",
-                "workflow": "ace-step-1-t2a.json",
+                "workflow": f"{key}.json",
                 "workflow_hash_sha256": workflow_hash(workflow),
-                "model_stack": model_stack("ace-step-1-t2a", inputs),
+                "model_stack": model_stack(key, inputs),
                 "output_node": output_node,
+                "parameters": {
+                    "steps": workflow["8"]["inputs"]["steps"],
+                    "cfg": workflow["8"]["inputs"]["cfg"],
+                    "duration_seconds": workflow["4"]["inputs"]["seconds"],
+                    **({"bpm": workflow["2"]["inputs"]["bpm"],
+                        "text_encoder_device": workflow["11"]["inputs"]["device"]}
+                       if key == "ace-step-1.5-t2a" else {}),
+                },
             }
         stack = inputs.get("workflow_model_stack")
         return {
