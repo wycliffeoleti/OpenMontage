@@ -6,7 +6,7 @@ PIP = $(RUN_PYTHON) -m pip
 
 .DEFAULT_GOAL := setup
 
-.PHONY: setup install install-dev install-gpu test test-contracts lint clean preflight demo demo-list hyperframes-doctor hyperframes-warm venv ensure-venv
+.PHONY: setup install install-dev install-gpu test test-contracts lint clean preflight demo demo-list hyperframes-doctor hyperframes-warm venv ensure-venv 3d-setup 3d-check 3d-smoke
 
 # ---- Virtual environment ----
 
@@ -109,6 +109,16 @@ hyperframes-warm:
 	@echo "    Uses --prefer-online so npx picks up new releases since your last run."
 	npx --yes --prefer-online hyperframes --version
 	@echo "==> Cache warm complete."
+
+# The existing workstation environment is intentionally reused; check never installs.
+3d-setup:
+	$(RUN_PYTHON) scripts/setup_3d_tools.py --setup
+
+3d-check:
+	$(RUN_PYTHON) scripts/setup_3d_tools.py --check
+
+3d-smoke:
+	$(RUN_PYTHON) scripts/setup_3d_tools.py --smoke
 
 demo: ensure-venv
 	@echo "==> Rendering zero-key demo videos (no API keys needed)..."

@@ -7,11 +7,35 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 from tools.base_tool import ToolResult
 from tools.graphics.threejs_world import ThreeJSWorld
 from tools.tool_registry import ToolRegistry
 from tools.video.hyperframes_compose import HyperFramesCompose
 from tools.video.video_compose import VideoCompose
+
+
+@pytest.fixture(autouse=True)
+def local_world_libraries(tmp_path, monkeypatch):
+    """Small local packages for authoring tests; browser QA uses real packages."""
+    root = tmp_path / "runtime"
+    packages = {
+        "three": ("0.181.2", ["build/three.module.js", "build/three.core.js",
+                              "examples/jsm/loaders/GLTFLoader.js",
+                              "examples/jsm/utils/BufferGeometryUtils.js", "LICENSE"]),
+        "gsap": ("3.14.2", ["dist/gsap.min.js", "README.md"]),
+    }
+    for name, (version, files) in packages.items():
+        directory = root / "node_modules" / name
+        directory.mkdir(parents=True)
+        (directory / "package.json").write_text(json.dumps({"name": name, "version": version}))
+        for filename in files:
+            path = directory / filename
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(f"// {name}: {filename}\n")
+    monkeypatch.setattr("tools.graphics.threejs_world._RUNTIME_ROOT", root, raising=False)
+    return root
 
 
 def _world_spec(duration: float = 12.0) -> dict:
@@ -146,6 +170,42 @@ def test_threejs_world_rejects_incomplete_camera_path():
     )
     assert not result.success
     assert "Last camera key" in (result.error or "")
+
+
+def test_generated_world_has_complete_local_library_graph(tmp_path):
+    workspace = tmp_path / "world"
+    result = ThreeJSWorld().execute({
+        "operation": "build", "world_spec": _world_spec(),
+        "output_path": str(workspace), "duration_seconds": 12,
+    })
+    assert result.success, result.error
+    index = (workspace / "index.html").read_text()
+    runtime = (workspace / "world-runtime.js").read_text()
+    assert "cdn.jsdelivr.net" not in index + runtime
+    assert 'type="importmap"' in index
+    for relative in ["vendor/three/three.module.js", "vendor/three/three.core.js",
+                     "vendor/three/addons/loaders/GLTFLoader.js",
+                     "vendor/three/addons/utils/BufferGeometryUtils.js",
+                     "vendor/gsap/gsap.min.js", "vendor/three/LICENSE", "vendor/gsap/README.md",
+                     "vendor/gsap/package.json"]:
+        assert (workspace / relative).is_file(), relative
+
+
+def test_world_build_reports_missing_local_dependencies(tmp_path, local_world_libraries):
+    (local_world_libraries / "node_modules/three/build/three.module.js").unlink()
+    workspace = tmp_path / "world"
+    result = ThreeJSWorld().execute({
+        "operation": "build", "world_spec": _world_spec(),
+        "output_path": str(workspace), "duration_seconds": 12,
+    })
+    assert not result.success
+    assert "3d-setup" in (result.error or "")
+    assert not (workspace / "index.html").exists()
+
+
+def test_missing_world_libraries_are_not_advertised_as_available(local_world_libraries):
+    (local_world_libraries / "node_modules/three/build/three.module.js").unlink()
+    assert ThreeJSWorld().get_status().value == "unavailable"
 
 
 def test_production_tier_rejects_primitive_only_spec():

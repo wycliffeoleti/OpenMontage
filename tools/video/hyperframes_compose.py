@@ -61,6 +61,8 @@ class HyperFramesCompose(BaseTool):
 
     dependencies = ["cmd:npx", "cmd:ffmpeg"]
     install_instructions = (
+        "For the pinned local 3D setup, run `make 3d-setup`; "
+        "HYPERFRAMES_CLI_PATH selects its local CLI for checks and rendering. "
         "Requires Node.js >= 22 (https://nodejs.org/) and FFmpeg "
         "(https://ffmpeg.org/download.html). The HyperFrames CLI is fetched "
         "on first use via `npx hyperframes` (npm package: `hyperframes`). "
@@ -248,6 +250,47 @@ class HyperFramesCompose(BaseTool):
     # (get_info spam from the registry) are free.
     _npm_resolve_cache: Optional[dict[str, str]] = None
     _cli_probe_cache: Optional[dict[str, str]] = None
+    _cli_probe_cache_key: Optional[tuple[str, str]] = None
+
+    @staticmethod
+    def _configured_cli() -> Optional[Path]:
+        value = os.environ.get("HYPERFRAMES_CLI_PATH", "").strip()
+        return Path(value).expanduser().resolve() if value else None
+
+    @classmethod
+    def _local_cli_info(cls) -> dict[str, str]:
+        cli = cls._configured_cli()
+        if cli is None:
+            return {}
+        try:
+            if not cli.is_file():
+                raise FileNotFoundError(f"configured CLI does not exist: {cli}")
+            package = json.loads((cli.parent.parent / "package.json").read_text(encoding="utf-8"))
+            if package.get("name") != "hyperframes" or not package.get("version"):
+                raise ValueError(f"invalid HyperFrames package metadata beside {cli}")
+            return {"version": str(package["version"])}
+        except (OSError, ValueError) as exc:
+            return {"error": f"{exc}; run make 3d-setup or correct HYPERFRAMES_CLI_PATH"}
+
+    @staticmethod
+    def _doctor_required_error(output: str) -> Optional[str]:
+        """Doctor exits zero even for failures, including optional components."""
+        try:
+            start = output.index("{")
+            payload, _ = json.JSONDecoder().raw_decode(output[start:])
+        except (ValueError, TypeError):
+            return "doctor returned no valid JSON health report"
+        required = {"Node.js", "FFmpeg", "FFprobe", "Chrome"}
+        checks = payload.get("checks") if isinstance(payload, dict) else None
+        if not isinstance(checks, list) or any(not isinstance(c, dict) for c in checks):
+            return "doctor returned no valid checks list"
+        missing = sorted(required - {c.get("name") for c in checks})
+        failures = [f"{c.get('name')}: {c.get('detail', 'failed')}"
+                    for c in checks
+                    if c.get("name") in required and not c.get("ok")]
+        if missing:
+            failures.append("doctor omitted required checks: " + ", ".join(missing))
+        return "; ".join(failures) or None
 
     @classmethod
     def _node_major_version(cls) -> Optional[int]:
@@ -332,17 +375,24 @@ class HyperFramesCompose(BaseTool):
         CLI command crashes during bootstrap. Provider preflight must not call
         that state available.
         """
-        if cls._cli_probe_cache is not None:
+        configured = cls._configured_cli()
+        cache_key = (str(configured or "npx"), os.environ.get("HYPERFRAMES_BROWSER_PATH", ""))
+        if cls._cli_probe_cache is not None and (
+            cls._cli_probe_cache_key == cache_key or
+            (configured is None and cls._cli_probe_cache_key is None)
+        ):
             return cls._cli_probe_cache
 
-        npx = shutil.which("npx")
-        if not npx:
+        executable = shutil.which("node" if configured else "npx")
+        if not executable:
             cls._cli_probe_cache = {"error": "npx not on PATH"}
             return cls._cli_probe_cache
+        command = [executable, str(configured)] if configured else [executable, "--yes", cls._NPM_PACKAGE]
+        cls._cli_probe_cache_key = cache_key
 
         try:
             proc = subprocess.run(
-                [npx, "--yes", cls._NPM_PACKAGE, "doctor", "--json"],
+                [*command, "doctor", "--json"],
                 capture_output=True,
                 text=True,
                 timeout=20,
@@ -358,6 +408,8 @@ class HyperFramesCompose(BaseTool):
             output = "\n".join(filter(None, [proc.stderr, proc.stdout])).strip()
             tail = output.splitlines()[-1][:200] if output else f"exit {proc.returncode}"
             cls._cli_probe_cache = {"error": f"doctor failed: {tail}"}
+        elif configured and (error := cls._doctor_required_error(proc.stdout or "")):
+            cls._cli_probe_cache = {"error": error}
         else:
             cls._cli_probe_cache = {"status": "ok"}
         return cls._cli_probe_cache
@@ -373,6 +425,7 @@ class HyperFramesCompose(BaseTool):
         node_major = self._node_major_version()
         ffmpeg_ok = shutil.which("ffmpeg") is not None
         npx_ok = shutil.which("npx") is not None
+        configured = self._configured_cli()
 
         reasons: list[str] = []
         if node_major is None:
@@ -381,7 +434,7 @@ class HyperFramesCompose(BaseTool):
             reasons.append(
                 f"node major version {node_major} < required {self._NODE_FLOOR_MAJOR}"
             )
-        if not npx_ok:
+        if not npx_ok and configured is None:
             reasons.append("npx not found on PATH")
         if not ffmpeg_ok:
             reasons.append("ffmpeg not found on PATH")
@@ -390,7 +443,7 @@ class HyperFramesCompose(BaseTool):
         # a missing-node run would also show a confusing npm error.
         npm_resolve: dict[str, str] = {}
         if not reasons:
-            npm_resolve = self._resolve_npm_package()
+            npm_resolve = self._local_cli_info() if configured else self._resolve_npm_package()
             if "error" in npm_resolve:
                 reasons.append(
                     f"npm package `{self._NPM_PACKAGE}` not resolvable: "
@@ -413,6 +466,8 @@ class HyperFramesCompose(BaseTool):
             "npm_resolve_error": npm_resolve.get("error"),
             "cli_probe_status": cli_probe.get("status"),
             "cli_probe_error": cli_probe.get("error"),
+            "cli_path": str(configured) if configured else None,
+            "runtime_source": "configured_local" if configured else "npx",
             "reasons": reasons,
         }
 
@@ -1360,7 +1415,17 @@ class HyperFramesCompose(BaseTool):
         want to raise CalledProcessError on non-zero exits — the caller
         parses lint/validate/render exit codes itself.
         """
-        cmd = ["npx", "--yes", "hyperframes", *args]
+        configured = self._configured_cli()
+        if configured:
+            local_info = self._local_cli_info()
+            if "error" in local_info:
+                return subprocess.CompletedProcess(
+                    args=[str(configured), *args], returncode=127,
+                    stdout="", stderr=local_info["error"],
+                )
+            cmd = [shutil.which("node") or "node", str(configured), *args]
+        else:
+            cmd = ["npx", "--yes", "hyperframes", *args]
         # On Windows, resolve the .cmd wrapper so subprocess can find it
         # without shell=True.
         if os.name == "nt":

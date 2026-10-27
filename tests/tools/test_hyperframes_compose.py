@@ -19,6 +19,12 @@ from tools.video.hyperframes_compose import HyperFramesCompose
 from tools.video.video_compose import VideoCompose
 
 
+@pytest.fixture(autouse=True)
+def legacy_cli_environment(monkeypatch):
+    # These tests exercise the unconfigured npx path, independently of this host.
+    monkeypatch.setenv("HYPERFRAMES_CLI_PATH", "")
+
+
 # ------------------------------------------------------------------
 # Tool contract
 # ------------------------------------------------------------------

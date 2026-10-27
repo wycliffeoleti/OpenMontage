@@ -7,9 +7,11 @@ using the Manim Community Edition engine. Free, local, no API key required.
 from __future__ import annotations
 
 import ast
+import importlib.util
 import os
 import shutil
 import subprocess
+import sys
 import tempfile
 import time
 from pathlib import Path
@@ -79,6 +81,15 @@ QUALITY_PRESETS = {
     "4k": {"flag": "-qk", "resolution": "3840x2160", "fps": 60},
     "preview": {"flag": "-ql --format gif", "resolution": "854x480", "fps": 15},
 }
+
+
+def _manim_command() -> Optional[list[str]]:
+    """Prefer the CLI on PATH; fall back to this interpreter's installed module."""
+    if shutil.which("manim"):
+        return ["manim"]
+    if importlib.util.find_spec("manim") is not None:
+        return [sys.executable, "-m", "manim"]
+    return None
 
 
 class MathAnimate(BaseTool):
@@ -186,7 +197,7 @@ class MathAnimate(BaseTool):
     ]
 
     def get_status(self) -> ToolStatus:
-        if shutil.which("manim"):
+        if _manim_command():
             return ToolStatus.AVAILABLE
         return ToolStatus.UNAVAILABLE
 
@@ -206,7 +217,7 @@ class MathAnimate(BaseTool):
         return estimates.get(quality, 15.0)
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
-        if not shutil.which("manim"):
+        if not _manim_command():
             return ToolResult(
                 success=False,
                 error="Manim not found. " + self.install_instructions,
@@ -310,7 +321,7 @@ class MathAnimate(BaseTool):
         scene_file.write_text(scene_code, encoding="utf-8")
 
         # Build Manim CLI command
-        cmd = ["manim"]
+        cmd = _manim_command() or ["manim"]
 
         # Quality flag
         preset = QUALITY_PRESETS.get(quality, QUALITY_PRESETS["medium"])

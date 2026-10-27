@@ -47,7 +47,7 @@ Only one of Ming, ComfyUI, Wan/diffusers, Blender Cycles, or GPU Whisper should 
 - Ming: see above.
 
 ## Local tools set up on this machine
-Run Python with `PATH=$PWD/.venv/bin:$HOME/.local/bin:$PATH`; otherwise piper and manim show as unavailable.
+Run Python with `PATH=$PWD/.venv/bin:$HOME/.local/bin:$PATH`; otherwise piper shows as unavailable. (`math_animate` falls back to the venv's Manim module.)
 
 | Need | Tool | Notes |
 |---|---|---|
@@ -65,6 +65,13 @@ Run Python with `PATH=$PWD/.venv/bin:$HOME/.local/bin:$PATH`; otherwise piper an
 The setup status, remaining items and evidence are in
 `/data/projects/personal/content/OpenMontage/smoke-tests/2026-10-26/HANDOFF.md`.
 Free/local audio details: `docs/local-audio.md`.
+
+Local 3D readiness: `make 3d-check` checks the pinned HyperFrames/Three.js world
+route and Manim; `make 3d-smoke` verifies actual renders. Setup and evidence are
+documented in `docs/3d-readiness.md`. Choose worlds/fly-throughs with HyperFrames
+and mathematical diagrams with Manim according to the brief, retaining the normal
+runtime choice and approval gates. The separate custom 3D explainer integration
+remains deferred.
 
 ## Setup continuation
 `docs/local-tool-setup.md` records the current implementation, queued downloads,

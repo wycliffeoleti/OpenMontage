@@ -25,6 +25,22 @@ Apply when:
 
 ## Runtime choice (Remotion vs HyperFrames vs FFmpeg)
 
+### Prepared local 3D routes
+
+Run `make 3d-check` before proposing local 3D work; see `docs/3d-readiness.md`
+for setup and retained render evidence. Use `make 3d-setup` for missing pinned
+dependencies and `make 3d-smoke` to exercise real rendering.
+
+- Recommend `threejs_world` with HyperFrames for environments, terrain and camera
+  fly-throughs. Use its local libraries and preserve blockout/production fidelity gates.
+- Recommend `math_animate` with Manim `ThreeDScene` for mathematical and scientific
+  diagrams. Treat the rendered clip as an asset in the approved composition runtime.
+- The custom Remotion/Three.js explainer in the separate worktree remains deferred;
+  do not assume those additions have been integrated into this checkout.
+
+These are recommendations based on content, not automatic runtime substitutions.
+Present the available runtime choices below and keep the normal per-video approvals.
+
 OpenMontage separates creative grammar (`renderer_family`) from technical
 engine (`render_runtime`). Both are locked at proposal and carried through
 `edit_decisions` unchanged. Silent runtime swaps at compose time are a

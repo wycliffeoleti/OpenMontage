@@ -18,6 +18,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from lib.threejs_runtime import RUNTIME_ROOT, stage_world_runtime, world_runtime_errors
 from tools.base_tool import (
     BaseTool,
     Determinism,
@@ -26,6 +27,7 @@ from tools.base_tool import (
     ToolResult,
     ToolRuntime,
     ToolStability,
+    ToolStatus,
     ToolTier,
 )
 
@@ -35,6 +37,7 @@ _LANDFORMS = {"plain", "peak", "ridge", "dune", "terrace", "basin", "canyon"}
 _LANDMARKS = {"monolith", "arch", "tower", "ruin", "crystal", "settlement", "ring"}
 _RENDER_MODES = {"cinematic", "semantic", "wireframe"}
 _QUALITY_TIERS = {"blockout", "production"}
+_RUNTIME_ROOT = RUNTIME_ROOT
 
 
 def _clamp(value: float, low: float, high: float) -> float:
@@ -86,8 +89,8 @@ class ThreeJSWorld(BaseTool):
     runtime = ToolRuntime.LOCAL
     dependencies: list[str] = []
     install_instructions = (
-        "World authoring is dependency-free. Final rendering requires the configured "
-        "HyperFrames runtime (Node.js >= 22, npx, and FFmpeg)."
+        "Run make 3d-setup for pinned local Three.js/GSAP libraries and HyperFrames. "
+        "Final rendering requires Node.js >= 22, FFmpeg and Chrome."
     )
     agent_skills = ["threejs-world-generation"]
     capabilities = [
@@ -142,7 +145,7 @@ class ThreeJSWorld(BaseTool):
     }
     artifact_schema = {"artifact": "3d_world"}
     resource_profile = ResourceProfile(
-        cpu_cores=2, ram_mb=1024, vram_mb=1024, disk_mb=2000, network_required=True
+        cpu_cores=2, ram_mb=1024, vram_mb=1024, disk_mb=2000, network_required=False
     )
     idempotency_key_fields = ["operation", "world_spec", "duration_seconds", "render_mode", "quality_tier", "asset_catalog_paths"]
     side_effects = [
@@ -155,6 +158,9 @@ class ThreeJSWorld(BaseTool):
         "Verify landmark contact, camera clearance, and stable region identities",
         "Open index.html with HyperFrames preview to explore the authored camera path",
     ]
+
+    def get_status(self) -> ToolStatus:
+        return ToolStatus.UNAVAILABLE if world_runtime_errors(_RUNTIME_ROOT) else ToolStatus.AVAILABLE
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         started = time.time()
@@ -644,6 +650,7 @@ class ThreeJSWorld(BaseTool):
         if missing:
             raise FileNotFoundError(f"Missing Three.js world templates: {', '.join(missing)}")
 
+        vendor_artifacts = stage_world_runtime(workspace, _RUNTIME_ROOT)
         workspace.mkdir(parents=True, exist_ok=True)
         (workspace / "assets").mkdir(exist_ok=True)
         (workspace / "renders").mkdir(exist_ok=True)
@@ -720,6 +727,7 @@ class ThreeJSWorld(BaseTool):
         )
 
         return [
+            *vendor_artifacts,
             str(index_path),
             str(css_path),
             str(runtime_path),
