@@ -10,6 +10,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from lib.media_profiles import delivery_fps
 from tools.base_tool import (
     BaseTool,
     Determinism,
@@ -129,6 +130,7 @@ class BlenderWorld(BaseTool):
         return 30.0
 
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
+        inputs = {**inputs, "fps": inputs.get("fps", delivery_fps(30))}
         blender = find_blender()
         if not blender:
             return ToolResult(success=False, error="Blender not found. " + self.install_instructions)

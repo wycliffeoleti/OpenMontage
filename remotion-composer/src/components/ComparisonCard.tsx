@@ -2,9 +2,8 @@ import {
   AbsoluteFill,
   interpolate,
   spring,
-  useCurrentFrame,
-  useVideoConfig,
 } from "remotion";
+import { useFrame30, useVideoConfig30 } from "../lib/deliveryFps";
 
 type ChangeDirection = "up" | "down" | "neutral";
 
@@ -45,8 +44,8 @@ export const ComparisonCard: React.FC<ComparisonCardProps> = ({
   labelFontSize = 28,
   valueFontSize = 72,
 }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const frame = useFrame30();
+  const { fps } = useVideoConfig30();
 
   // Phase 1: Title + left side appears
   const titleOpacity = spring({

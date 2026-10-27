@@ -31,6 +31,7 @@ import { ScreenshotScene } from "./components/ScreenshotScene";
 import type { ScreenshotStep } from "./components/ScreenshotScene";
 import { ProviderChip } from "./components/ProviderChip";
 import { resolveAsset } from "./lib/resolveAsset";
+import { DEFAULT_FPS } from "./lib/deliveryFps";
 import type { ParticleType } from "./components/ParticleOverlay";
 import { resolveTheme, type ThemeConfig, DEFAULT_THEME } from "./Root";
 
@@ -439,7 +440,7 @@ const VideoScene: React.FC<{
   const hardOut = ["cut", "none"].includes((transitionOut || "").toLowerCase());
   const transitionFrames = Math.max(
     1,
-    Math.round((transitionDuration ?? 8 / fps) * fps),
+    Math.round((transitionDuration ?? 8 / DEFAULT_FPS) * fps),
   );
   const fadeIn = hardIn
     ? 1

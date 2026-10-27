@@ -2,9 +2,8 @@ import {
   AbsoluteFill,
   interpolate,
   spring,
-  useCurrentFrame,
-  useVideoConfig,
 } from "remotion";
+import { useFrame30, useVideoConfig30 } from "../../lib/deliveryFps";
 
 interface BarDatum {
   label: string;
@@ -40,8 +39,8 @@ export const BarChart: React.FC<BarChartProps> = ({
   animationStyle = "grow-up",
   barGap = 12,
 }) => {
-  const frame = useCurrentFrame();
-  const { fps, durationInFrames } = useVideoConfig();
+  const frame = useFrame30();
+  const { fps, durationInFrames } = useVideoConfig30();
 
   const maxValue = Math.max(...data.map((d) => d.value), 1);
 

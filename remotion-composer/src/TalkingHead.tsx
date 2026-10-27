@@ -8,6 +8,7 @@ import {
 } from "remotion";
 import { CaptionOverlay, WordCaption } from "./components/CaptionOverlay";
 import { resolveAsset } from "./lib/resolveAsset";
+import { at30 } from "./lib/deliveryFps";
 import { TextCard } from "./components/TextCard";
 import { StatCard } from "./components/StatCard";
 import { CalloutBox } from "./components/CalloutBox";
@@ -252,16 +253,17 @@ const PositionedOverlay: React.FC<{ overlay: TalkingHeadOverlay }> = ({
   overlay,
 }) => {
   const frame = useCurrentFrame();
-  const { durationInFrames } = useVideoConfig();
+  const { durationInFrames, fps } = useVideoConfig();
 
-  // Fade in over 8 frames (~0.27s), fade out over 8 frames
-  const fadeIn = interpolate(frame, [0, 8], [0, 1], {
+  // Fade in over 8 frames at 30fps (~0.27s), fade out the same
+  const fade = at30(8, fps);
+  const fadeIn = interpolate(frame, [0, fade], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
   const fadeOut = interpolate(
     frame,
-    [durationInFrames - 8, durationInFrames],
+    [durationInFrames - fade, durationInFrames],
     [1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );

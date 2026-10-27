@@ -17,6 +17,7 @@ import time
 from pathlib import Path
 from typing import Any, Optional
 
+from lib.media_profiles import delivery_fps
 from tools.base_tool import (
     BaseTool,
     Determinism,
@@ -328,6 +329,14 @@ class MathAnimate(BaseTool):
         for flag_part in preset["flag"].split():
             cmd.append(flag_part)
 
+        # Delivery-quality presets follow the configured finished-video frame
+        # rate; low/preview stay fast drafts.
+        fps = preset["fps"]
+        if quality not in ("low", "preview"):
+            fps = delivery_fps(preset["fps"])
+            if fps != preset["fps"]:
+                cmd.extend(["--frame_rate", str(fps)])
+
         # Format
         if output_format == "gif":
             cmd.append("--format")
@@ -420,7 +429,7 @@ class MathAnimate(BaseTool):
                 "format": output_format,
                 "output": str(final_path),
                 "resolution": preset["resolution"],
-                "fps": preset["fps"],
+                "fps": fps,
                 **video_info,
             },
             artifacts=[str(final_path)],

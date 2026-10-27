@@ -6,9 +6,27 @@ so the composer and publisher agents can format output correctly.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, replace
 from enum import Enum
 from typing import Optional
+
+# Optional workstation-wide frame rate for finished videos. Unset keeps each
+# profile's own rate; drafts and previews are left to their tools.
+DELIVERY_FPS_ENV = "OPENMONTAGE_OUTPUT_FPS"
+_DELIVERY_FPS_VALUES = (24, 25, 30, 50, 60)
+
+
+def delivery_fps(default: int) -> int:
+    """Return the configured finished-video frame rate, or ``default``."""
+    value = os.environ.get(DELIVERY_FPS_ENV, "").strip()
+    if not value:
+        return default
+    if not value.isdigit() or int(value) not in _DELIVERY_FPS_VALUES:
+        raise ValueError(
+            f"{DELIVERY_FPS_ENV}={value!r} must be one of {list(_DELIVERY_FPS_VALUES)}"
+        )
+    return int(value)
 
 
 class AspectRatio(str, Enum):
@@ -144,7 +162,8 @@ def get_profile(name: str) -> MediaProfile:
     if name not in ALL_PROFILES:
         available = ", ".join(ALL_PROFILES.keys())
         raise ValueError(f"Unknown profile {name!r}. Available: {available}")
-    return ALL_PROFILES[name]
+    profile = ALL_PROFILES[name]
+    return replace(profile, fps=delivery_fps(profile.fps))
 
 
 def get_profiles_for_platform(platform: str) -> list[MediaProfile]:

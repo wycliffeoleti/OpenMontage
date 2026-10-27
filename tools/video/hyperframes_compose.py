@@ -603,7 +603,7 @@ class HyperFramesCompose(BaseTool):
                 error="edit_decisions with non-empty cuts[] is required for scaffold_workspace",
             )
 
-        width, height, fps = self._resolve_dimensions(profile_name, inputs.get("fps", 30))
+        width, height, fps = self._resolve_dimensions(profile_name, self._requested_fps(inputs))
 
         workspace.mkdir(parents=True, exist_ok=True)
         (workspace / "compositions").mkdir(exist_ok=True)
@@ -883,7 +883,7 @@ class HyperFramesCompose(BaseTool):
 
         # 4. Render.
         width, height, fps = self._resolve_dimensions(
-            inputs.get("profile"), inputs.get("fps", 30)
+            inputs.get("profile"), self._requested_fps(inputs)
         )
         quality = inputs.get("quality", "standard")
         args = [
@@ -980,7 +980,7 @@ class HyperFramesCompose(BaseTool):
             )
 
         _, _, fps = self._resolve_dimensions(
-            inputs.get("profile"), inputs.get("fps", 30)
+            inputs.get("profile"), self._requested_fps(inputs)
         )
         quality = inputs.get("quality", "standard")
         args = [
@@ -1045,6 +1045,16 @@ class HyperFramesCompose(BaseTool):
         if not raw:
             raise ValueError("workspace_path is required for this operation")
         return Path(raw).resolve()
+
+    @staticmethod
+    def _requested_fps(inputs: dict[str, Any]) -> int:
+        """Explicit fps wins; drafts keep 30; other renders use the delivery rate."""
+        if "fps" in inputs:
+            return int(inputs["fps"])
+        if inputs.get("quality") == "draft":
+            return 30
+        from lib.media_profiles import delivery_fps  # type: ignore
+        return delivery_fps(30)
 
     @staticmethod
     def _resolve_dimensions(

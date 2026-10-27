@@ -2,9 +2,8 @@ import {
   AbsoluteFill,
   interpolate,
   spring,
-  useCurrentFrame,
-  useVideoConfig,
 } from "remotion";
+import { useFrame30, useVideoConfig30 } from "../../lib/deliveryFps";
 
 interface DataPoint {
   x: number;
@@ -52,8 +51,8 @@ export const LineChart: React.FC<LineChartProps> = ({
   animationStyle = "draw",
   strokeWidth = 3,
 }) => {
-  const frame = useCurrentFrame();
-  const { fps, durationInFrames } = useVideoConfig();
+  const frame = useFrame30();
+  const { fps, durationInFrames } = useVideoConfig30();
 
   // Chart layout
   const chartLeft = 160;

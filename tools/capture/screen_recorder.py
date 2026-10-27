@@ -20,6 +20,7 @@ import time
 from pathlib import Path
 from typing import Any
 
+from lib.media_profiles import delivery_fps
 from tools.base_tool import (
     BaseTool,
     Determinism,
@@ -176,7 +177,7 @@ class ScreenRecorder(BaseTool):
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         output_path = Path(inputs["output_path"])
         duration = min(inputs.get("duration_seconds", 60), 600)
-        fps = inputs.get("fps", 30)
+        fps = inputs.get("fps", delivery_fps(30))
         capture_audio = inputs.get("capture_audio", True)
         region = inputs.get("region")
         screen_index = inputs.get("screen_index", 0)

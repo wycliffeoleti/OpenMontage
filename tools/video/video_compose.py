@@ -678,6 +678,10 @@ class VideoCompose(BaseTool):
                     profile_flags = ["-s", f"{p.width}x{p.height}", "-r", str(p.fps)]
                 except (ImportError, ValueError):
                     pass
+            else:
+                from lib.media_profiles import delivery_fps
+                if delivery_fps(0):
+                    profile_flags = ["-r", str(delivery_fps(0))]
 
             needs_reencode = bool(vfilters) or bool(profile_flags)
 
@@ -1075,6 +1079,7 @@ class VideoCompose(BaseTool):
             proposal_packet=inputs.get("proposal_packet"),
             narration_transcript_path=inputs.get("narration_transcript_path"),
             script_text=inputs.get("script_text"),
+            draft=inputs.get("quality") == "draft",
         )
 
         atelier_checks = self._run_atelier_checks(entry_path, bespoke)
@@ -1727,6 +1732,7 @@ class VideoCompose(BaseTool):
                 script_text=inputs.get("script_text") or self._read_text_file(
                     inputs.get("script_path")
                 ),
+                draft=inputs.get("quality") == "draft",
             )
 
             # Attach final_review to the ToolResult data so the compose-director
@@ -1864,6 +1870,7 @@ class VideoCompose(BaseTool):
                 script_text=inputs.get("script_text") or self._read_text_file(
                     inputs.get("script_path")
                 ),
+                draft=inputs.get("quality") == "draft",
             )
             if render_result.data is None:
                 render_result.data = {}
@@ -1924,6 +1931,7 @@ class VideoCompose(BaseTool):
                 script_text=inputs.get("script_text") or self._read_text_file(
                     inputs.get("script_path")
                 ),
+                draft=inputs.get("quality") == "draft",
             )
             if render_result.data is None:
                 render_result.data = {}
@@ -2042,6 +2050,11 @@ class VideoCompose(BaseTool):
                 # Only for the dir we created and will delete; a caller-supplied
                 # public_dir is their contract to populate, so leave it untouched.
                 self._mirror_public_dir(composer_dir / "public", public_dir)
+
+            # Remotion has no fps flag; compositions read it in calculateMetadata.
+            from lib.media_profiles import delivery_fps
+            if delivery_fps(0):
+                props.setdefault("fps", delivery_fps(0))
 
             # Write the fully adapted/staged props, never the original cut payload.
             with open(props_path, "w", encoding="utf-8") as f:
@@ -2293,6 +2306,7 @@ class VideoCompose(BaseTool):
         proposal_packet: dict[str, Any] | None = None,
         narration_transcript_path: str | Path | None = None,
         script_text: str | None = None,
+        draft: bool = False,
     ) -> dict[str, Any]:
         """Run post-render self-review and produce a final_review artifact.
 
@@ -2376,6 +2390,13 @@ class VideoCompose(BaseTool):
                 if width < 320 or height < 240:
                     technical_probe["issues"].append(
                         f"Resolution {width}x{height} is very low"
+                    )
+                from lib.media_profiles import DELIVERY_FPS_ENV, delivery_fps
+                expected_fps = 0 if draft else delivery_fps(0)
+                if expected_fps and abs(fps - expected_fps) > 0.01:
+                    technical_probe["issues"].append(
+                        f"Delivery frame rate mismatch: rendered {fps:g}fps, "
+                        f"{DELIVERY_FPS_ENV} requires {expected_fps}fps"
                     )
                 if not audio_stream:
                     technical_probe["issues"].append("No audio stream in output")
@@ -2659,6 +2680,7 @@ class VideoCompose(BaseTool):
                 "silent downgrade", "delivery promise violation",
                 "effectively silent", "ffprobe failed", "suspiciously short",
                 "tts punctuation leak",  # reading literal punctuation aloud
+                "delivery frame rate mismatch",
             ])
         ]
 

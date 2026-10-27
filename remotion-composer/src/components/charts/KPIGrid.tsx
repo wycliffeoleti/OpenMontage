@@ -2,9 +2,8 @@ import {
   AbsoluteFill,
   interpolate,
   spring,
-  useCurrentFrame,
-  useVideoConfig,
 } from "remotion";
+import { useFrame30, useVideoConfig30 } from "../../lib/deliveryFps";
 
 interface Metric {
   label: string;
@@ -44,8 +43,8 @@ export const KPIGrid: React.FC<KPIGridProps> = ({
   negativeColor = "#EF4444",
   animationStyle = "count-up",
 }) => {
-  const frame = useCurrentFrame();
-  const { fps, durationInFrames } = useVideoConfig();
+  const frame = useFrame30();
+  const { fps, durationInFrames } = useVideoConfig30();
 
   const cols = Math.min(columns, metrics.length);
   const rows = Math.ceil(metrics.length / cols);

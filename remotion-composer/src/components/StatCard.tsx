@@ -1,4 +1,5 @@
-import { AbsoluteFill, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, spring } from "remotion";
+import { useFrame30, useVideoConfig30 } from "../lib/deliveryFps";
 
 interface StatCardProps {
   stat: string;
@@ -19,8 +20,8 @@ export const StatCard: React.FC<StatCardProps> = ({
   accentColor = "#F59E0B",
   backgroundColor = "#1F2937",
 }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const frame = useFrame30();
+  const { fps } = useVideoConfig30();
 
   const scale = spring({
     frame,

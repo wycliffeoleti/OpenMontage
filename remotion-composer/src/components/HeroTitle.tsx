@@ -2,9 +2,8 @@ import {
   AbsoluteFill,
   interpolate,
   spring,
-  useCurrentFrame,
-  useVideoConfig,
 } from "remotion";
+import { useFrame30, useVideoConfig30 } from "../lib/deliveryFps";
 import { getResponsiveSceneLayout } from "./responsiveLayout";
 
 type HeroTitleProps = {
@@ -35,8 +34,8 @@ export const HeroTitle: React.FC<HeroTitleProps> = ({
   subtitleColor = "#A78BFA",
   scrimBackground = DEFAULT_SCRIM,
 }) => {
-  const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
+  const frame = useFrame30();
+  const { fps, width, height } = useVideoConfig30();
   const layout = getResponsiveSceneLayout(width, height);
   // Portrait frames scale with the frame; landscape keeps upstream's fixed sizing.
   const portrait = layout.isPortrait;

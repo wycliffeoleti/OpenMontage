@@ -2,9 +2,8 @@ import {
   AbsoluteFill,
   interpolate,
   spring,
-  useCurrentFrame,
-  useVideoConfig,
 } from "remotion";
+import { useFrame30, useVideoConfig30 } from "../lib/deliveryFps";
 
 interface SectionTitleProps {
   title: string;
@@ -22,8 +21,8 @@ export const SectionTitle: React.FC<SectionTitleProps> = ({
   textColor = "#F8FAFC",
   position = "top-left",
 }) => {
-  const frame = useCurrentFrame();
-  const { fps, durationInFrames } = useVideoConfig();
+  const frame = useFrame30();
+  const { fps, durationInFrames } = useVideoConfig30();
 
   // Entrance spring
   const slideIn = spring({

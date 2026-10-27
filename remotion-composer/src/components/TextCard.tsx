@@ -1,4 +1,5 @@
-import { AbsoluteFill, spring, useCurrentFrame, useVideoConfig } from "remotion";
+import { AbsoluteFill, spring } from "remotion";
+import { useFrame30, useVideoConfig30 } from "../lib/deliveryFps";
 
 interface TextCardProps {
   text: string;
@@ -13,8 +14,8 @@ export const TextCard: React.FC<TextCardProps> = ({
   color = "#FFFFFF",
   backgroundColor = "#1F2937",
 }) => {
-  const frame = useCurrentFrame();
-  const { fps } = useVideoConfig();
+  const frame = useFrame30();
+  const { fps } = useVideoConfig30();
 
   const opacity = spring({ frame, fps, config: { damping: 20 } });
   const scale = spring({

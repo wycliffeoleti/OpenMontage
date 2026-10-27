@@ -2,9 +2,8 @@ import {
   AbsoluteFill,
   interpolate,
   spring,
-  useCurrentFrame,
-  useVideoConfig,
 } from "remotion";
+import { useFrame30, useVideoConfig30 } from "../lib/deliveryFps";
 import { getResponsiveSceneLayout } from "./responsiveLayout";
 
 type CalloutType = "info" | "warning" | "tip" | "quote";
@@ -46,8 +45,8 @@ export const CalloutBox: React.FC<CalloutBoxProps> = ({
   titleFontSize,
   containerBackgroundColor = "#FFFFFF",
 }) => {
-  const frame = useCurrentFrame();
-  const { fps, width, height } = useVideoConfig();
+  const frame = useFrame30();
+  const { fps, width, height } = useVideoConfig30();
   const layout = getResponsiveSceneLayout(width, height);
   // Portrait frames scale with the frame; landscape keeps upstream's fixed sizing.
   const resolvedFontSize = fontSize ?? (layout.isPortrait ? layout.calloutFontSize : 32);

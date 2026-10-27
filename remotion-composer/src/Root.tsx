@@ -17,6 +17,7 @@ import { CaptionOverlay, WordCaption } from "./components/CaptionOverlay";
 import { CollageBurst, CollageBurstProps } from "./CollageBurst";
 import { LyricOverlay, LyricOverlayProps } from "./LyricOverlay";
 import { ContentCreatorCompositions } from "./integrations/content-creator/v1/ContentCreatorCompositions";
+import { propsFps } from "./lib/deliveryFps";
 
 // ---------------------------------------------------------------------------
 // Theme System — prevents every video from looking like dark fintech
@@ -124,13 +125,22 @@ export function resolveTheme(props: Record<string, unknown>): ThemeConfig {
 const calculateMetadata: CalculateMetadataFunction<ExplainerProps> = async ({
   props,
 }) => {
+  const fps = propsFps(props);
   const cuts = props.cuts || [];
   if (cuts.length === 0) {
-    return { durationInFrames: 30 * 60 };
+    return { fps, durationInFrames: fps * 60 };
   }
   const lastEnd = Math.max(...cuts.map((c) => c.out_seconds || 0));
   // Add 1 second padding for final fade
-  return { durationInFrames: Math.ceil((lastEnd + 1) * 30) };
+  return { fps, durationInFrames: Math.ceil((lastEnd + 1) * fps) };
+};
+
+// TalkingHead keeps its 300-second window at whatever frame rate is requested.
+const calculateTalkingHeadMetadata: CalculateMetadataFunction<TalkingHeadProps> = async ({
+  props,
+}) => {
+  const fps = propsFps(props);
+  return { fps, durationInFrames: fps * 300 };
 };
 
 export const Root: React.FC = () => {
@@ -192,6 +202,7 @@ export const Root: React.FC = () => {
           fontSize: 52,
           highlightColor: "#22D3EE",
         }}
+        calculateMetadata={calculateTalkingHeadMetadata}
       />
       <Composition
         id="TitledVideo"

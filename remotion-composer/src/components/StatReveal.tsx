@@ -2,9 +2,8 @@ import {
   AbsoluteFill,
   interpolate,
   spring,
-  useCurrentFrame,
-  useVideoConfig,
 } from "remotion";
+import { useFrame30, useVideoConfig30 } from "../lib/deliveryFps";
 
 interface StatRevealProps {
   stat: string;
@@ -22,8 +21,8 @@ export const StatReveal: React.FC<StatRevealProps> = ({
   textColor = "#F8FAFC",
   position = "bottom-right",
 }) => {
-  const frame = useCurrentFrame();
-  const { fps, durationInFrames } = useVideoConfig();
+  const frame = useFrame30();
+  const { fps, durationInFrames } = useVideoConfig30();
 
   // Bouncy entrance
   const scale = spring({

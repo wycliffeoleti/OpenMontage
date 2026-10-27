@@ -21,7 +21,11 @@ The owner posts to monetized channels and **uploads the files manually**. Never 
   - one MP4 per requested platform;
   - `publish/metadata.md` with a title, description and hashtags per platform;
   - a 1280×720 thumbnail for long YouTube videos.
-- Delivery target: H.264 + AAC, integrated loudness about −14 LUFS, true peak ≤ −1 dBTP. Verify on the real output.
+- Delivery target: H.264 + AAC, **60fps**, integrated loudness about −14 LUFS, true peak ≤ −1 dBTP. Verify on the real output.
+- **60fps for every finished video, on every platform.** `OPENMONTAGE_OUTPUT_FPS=60` in `.env` applies it to media profiles and to final HyperFrames, Remotion and Manim renders. The final review flags any other rate. Record the frame rate in the proposal's `decision_log`.
+  - Drafts, previews and samples may stay at lower rates so they render faster.
+  - Keep clips made at lower rates (AI video, stock footage) at their natural motion. Never interpolate frames to fake 60fps.
+  - Render Manim assets for the final cut at `medium` or above, which follow the 60fps setting, never `low`.
 
 ## Approvals
 Use the manifest gates as written (`human_approval_default`). The owner approves idea/proposal, script, scene plan, assets, and publish. Never pre-authorize a full run on the owner's behalf.

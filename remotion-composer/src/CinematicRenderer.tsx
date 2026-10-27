@@ -15,8 +15,7 @@ import {
 import { CinematicRendererProps, CinematicTone, CinematicVideoScene } from "./cinematic/types";
 import { CaptionOverlay } from "./components/CaptionOverlay";
 import { resolveAsset } from "./lib/resolveAsset";
-
-const FPS = 30;
+import { at30, frames30, propsFps } from "./lib/deliveryFps";
 
 const { fontFamily } = loadSpaceGrotesk(["400", "500", "700"]);
 
@@ -38,8 +37,8 @@ const SceneVideo: React.FC<{ scene: CinematicVideoScene }> = ({ scene }) => {
   const frame = useCurrentFrame();
   const { fps } = useVideoConfig();
   const durationInFrames = Math.max(1, Math.round(scene.durationSeconds * fps));
-  const fadeInFrames = scene.fadeInFrames ?? 10;
-  const fadeOutFrames = scene.fadeOutFrames ?? 10;
+  const fadeInFrames = at30(scene.fadeInFrames ?? 10, fps);
+  const fadeOutFrames = at30(scene.fadeOutFrames ?? 10, fps);
   const fadeOutStart = Math.max(0, durationInFrames - fadeOutFrames);
   const fadeInOpacity =
     fadeInFrames === 0
@@ -118,12 +117,12 @@ const SignalTexture: React.FC<{
 }> = ({ accent, intensity, lineCount }) => {
   const frame = useCurrentFrame();
   // The frame width, not a hardcoded 1920: odd lines sit on the right edge.
-  const { width: frameWidth } = useVideoConfig();
+  const { width: frameWidth, fps } = useVideoConfig();
 
   return (
     <AbsoluteFill style={{ pointerEvents: "none" }}>
       {new Array(lineCount).fill(true).map((_, index) => {
-        const pulse = Math.max(0, Math.sin(frame * 0.06 + index * 0.85));
+        const pulse = Math.max(0, Math.sin(frames30(frame, fps) * 0.06 + index * 0.85));
         const opacity = (0.025 + pulse * 0.07) * intensity;
         const width = 18 + ((index * 37) % 56);
         const top = 140 + index * 42;
@@ -192,7 +191,7 @@ const TitleCard: React.FC<{
 
   const exit = interpolate(
     frame,
-    [durationInFrames - 14, durationInFrames],
+    [durationInFrames - at30(14, fps), durationInFrames],
     [1, 0],
     { extrapolateLeft: "clamp", extrapolateRight: "clamp" },
   );
@@ -202,16 +201,16 @@ const TitleCard: React.FC<{
   // \n separators (e.g. "TITLE 1\nTITLE 2") that the old whitespace
   // regex was collapsing into a single space.
   const lines = text.split(/\r?\n/);
-  const staggerFrames = 3;
-  const wordFadeFrames = 14;
+  const staggerFrames = at30(3, fps);
+  const wordFadeFrames = at30(14, fps);
 
-  const lineGrow = interpolate(frame, [0, 22], [0, 1], {
+  const lineGrow = interpolate(frame, [0, at30(22, fps)], [0, 1], {
     extrapolateLeft: "clamp",
     extrapolateRight: "clamp",
   });
   const lineExit = exit;
   const flareOpacity =
-    0.22 + Math.max(0, Math.sin(frame * 0.09)) * 0.18 * intensity;
+    0.22 + Math.max(0, Math.sin(frames30(frame, fps) * 0.09)) * 0.18 * intensity;
 
   const bgScale = interpolate(frame, [0, durationInFrames], [1.04, 1.1], {
     extrapolateLeft: "clamp",
@@ -446,9 +445,10 @@ export const calculateCinematicMetadata: CalculateMetadataFunction<CinematicRend
             ...props.scenes.map((scene) => scene.startSeconds + scene.durationSeconds),
           );
 
+    const fps = propsFps(props);
     return {
-      durationInFrames: Math.max(1, Math.ceil(totalSeconds * FPS)),
-      fps: FPS,
+      durationInFrames: Math.max(1, Math.ceil(totalSeconds * fps)),
+      fps,
       width: 1920,
       height: 1080,
     };
@@ -463,6 +463,7 @@ export const CinematicRenderer: React.FC<CinematicRendererProps> = ({
   music,
   captions,
 }) => {
+  const { fps } = useVideoConfig();
   return (
     <AbsoluteFill style={{ backgroundColor: "#000000" }}>
       {/* Layer 1: Narration audio */}
@@ -491,8 +492,8 @@ export const CinematicRenderer: React.FC<CinematicRendererProps> = ({
       {scenes.map((scene) => (
         <Sequence
           key={scene.id}
-          from={Math.round(scene.startSeconds * FPS)}
-          durationInFrames={Math.round(scene.durationSeconds * FPS)}
+          from={Math.round(scene.startSeconds * fps)}
+          durationInFrames={Math.round(scene.durationSeconds * fps)}
         >
           {scene.kind === "video" ? (
             <SceneVideo scene={scene} />

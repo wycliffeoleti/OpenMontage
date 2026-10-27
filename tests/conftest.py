@@ -111,6 +111,12 @@ def _block_network():
         socket.create_connection = _real_create_connection
 
 
+@pytest.fixture(autouse=True)
+def _default_delivery_fps(monkeypatch):
+    """Keep tests independent of a workstation's OPENMONTAGE_OUTPUT_FPS."""
+    monkeypatch.delenv("OPENMONTAGE_OUTPUT_FPS", raising=False)
+
+
 def pytest_configure(config):
     config.addinivalue_line(
         "markers",
