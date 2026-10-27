@@ -1,7 +1,15 @@
 import sys
 from types import SimpleNamespace
 
+import pytest
+
 from tools.analysis.transcriber import Transcriber
+
+
+@pytest.fixture(autouse=True)
+def in_process_device_selection(monkeypatch):
+    # These tests target the in-process probe; worker transport has separate tests.
+    monkeypatch.delenv("WHISPER_CUDA12_ROOT", raising=False)
 
 
 class _Info:

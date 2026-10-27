@@ -75,7 +75,7 @@ class CogVideoVideo(BaseTool):
     user_visible_verification = ["Watch generated clip for motion coherence and artifacts"]
 
     def get_status(self) -> ToolStatus:
-        return local_generation_status()
+        return local_generation_status(COGVIDEO_VARIANTS)
 
     DEFAULT_VARIANT = "cogvideo-5b"
 

@@ -75,7 +75,7 @@ class LTXVideoLocal(BaseTool):
     user_visible_verification = ["Watch generated clip for motion coherence and artifacts"]
 
     def get_status(self) -> ToolStatus:
-        return local_generation_status()
+        return local_generation_status(LTX_LOCAL_VARIANTS)
 
     def estimate_cost(self, inputs: dict[str, object]) -> float:
         return 0.0

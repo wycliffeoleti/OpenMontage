@@ -9,6 +9,8 @@ chaining image-to-video segments — see ``tools/video/_wan_engine.py``.
 from __future__ import annotations
 
 import time
+import copy
+import os
 from typing import Any
 
 from tools.base_tool import (
@@ -171,14 +173,24 @@ class WanVideo(BaseTool):
     ]
 
     def get_status(self) -> ToolStatus:
-        return local_generation_status()
+        return local_generation_status(WAN_VARIANTS)
+
+    def _default_variant(self) -> str:
+        configured = os.environ.get("VIDEO_GEN_LOCAL_MODEL", "").strip()
+        return configured if configured in WAN_VARIANTS else DEFAULT_VARIANT
+
+    def get_info(self) -> dict[str, Any]:
+        info = super().get_info()
+        info["input_schema"] = copy.deepcopy(info["input_schema"])
+        info["input_schema"]["properties"]["model_variant"]["default"] = self._default_variant()
+        return info
 
     def estimate_cost(self, inputs: dict[str, Any]) -> float:
         return 0.0
 
     def _plan(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Resolve the frame/segment plan without loading any weights."""
-        meta = WAN_VARIANTS.get(inputs.get("model_variant") or DEFAULT_VARIANT, WAN_VARIANTS[DEFAULT_VARIANT])
+        meta = WAN_VARIANTS.get(inputs.get("model_variant") or self._default_variant(), WAN_VARIANTS[self._default_variant()])
         fps = int(inputs.get("fps") or meta["fps"])
         segment_frames = snap_frames(int(inputs.get("segment_frames") or meta["default_num_frames"]))
         if inputs.get("num_frames"):
@@ -235,7 +247,7 @@ class WanVideo(BaseTool):
             result = generate_wan(
                 tool_name=self.name,
                 variants=WAN_VARIANTS,
-                default_variant=DEFAULT_VARIANT,
+                default_variant=self._default_variant(),
                 inputs=inputs,
             )
         except Exception as exc:

@@ -20,6 +20,8 @@ the values and reports what it actually used.
 
 from __future__ import annotations
 
+import os
+
 import gc
 import math
 from pathlib import Path
@@ -516,6 +518,14 @@ def generate_wan(
         return ToolResult(success=False, error="prompt is required")
 
     model_id = meta.get(f"hf_{operation}_id") or meta["hf_id"]
+    # A verified shared snapshot can back the workstation's configured model.
+    # Never reuse it for an explicit override or a different operation checkpoint.
+    local_path = os.environ.get("VIDEO_GEN_LOCAL_MODEL_PATH", "").strip()
+    if (local_path and variant_key == os.environ.get("VIDEO_GEN_LOCAL_MODEL", "").strip()
+            and model_id == meta["hf_id"]):
+        if not Path(local_path).is_dir():
+            return ToolResult(success=False, error=f"Configured local model directory is missing: {local_path}")
+        model_id = local_path
     precision = resolve_precision(inputs.get("precision", "auto"), meta["params_b"])
     enable_offload = inputs.get("enable_model_offload", True)
     offload_mode = resolve_offload_mode(

@@ -283,8 +283,11 @@ def local_generation_enabled() -> bool:
     return os.environ.get("VIDEO_GEN_LOCAL_ENABLED", "").lower() in {"true", "1", "yes"}
 
 
-def local_generation_status() -> ToolStatus:
+def local_generation_status(variants: dict | None = None) -> ToolStatus:
     if not local_generation_enabled():
+        return ToolStatus.UNAVAILABLE
+    configured = os.environ.get("VIDEO_GEN_LOCAL_MODEL", "").strip()
+    if configured and variants is not None and configured not in variants:
         return ToolStatus.UNAVAILABLE
     try:
         import diffusers  # noqa: F401

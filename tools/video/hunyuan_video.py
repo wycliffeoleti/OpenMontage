@@ -75,7 +75,7 @@ class HunyuanVideo(BaseTool):
     user_visible_verification = ["Watch generated clip for motion coherence and artifacts"]
 
     def get_status(self) -> ToolStatus:
-        return local_generation_status()
+        return local_generation_status(HUNYUAN_VARIANTS)
 
     def estimate_cost(self, inputs: dict[str, Any]) -> float:
         return 0.0

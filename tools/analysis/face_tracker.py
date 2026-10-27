@@ -1,10 +1,10 @@
-"""Face tracking tool using MediaPipe Face Mesh.
+"""Face tracking tool using the MediaPipe Tasks face detector.
 
-Tracks face bounding boxes, landmarks, and head pose across video frames.
+Tracks face bounding boxes across video frames.
 Outputs per-frame face data as JSON — used by auto_reframe, face_enhance,
 and other tools that need to know where the speaker's face is.
 
-Falls back to OpenCV Haar cascade if MediaPipe is not installed.
+Falls back to OpenCV Haar cascade if the MediaPipe Tasks API is not installed.
 """
 
 from __future__ import annotations
@@ -38,8 +38,9 @@ class FaceTracker(BaseTool):
 
     dependencies = ["cmd:ffmpeg"]
     install_instructions = (
-        "For best results install MediaPipe:\n"
-        "pip install mediapipe opencv-python\n\n"
+        "For best results install MediaPipe (Tasks API):\n"
+        "pip install mediapipe opencv-contrib-python\n"
+        "The face detector model downloads on first use (MEDIAPIPE_MODELS_DIR).\n\n"
         "Falls back to OpenCV Haar cascade (ships with opencv-python)."
     )
     agent_skills = ["ffmpeg"]
@@ -115,11 +116,26 @@ class FaceTracker(BaseTool):
     fallback_tools = []
 
     def _has_mediapipe(self) -> bool:
+        # mediapipe >= 0.10.30 dropped mp.solutions; require the Tasks API.
+        import importlib
+
         try:
-            import mediapipe  # noqa: F401
+            importlib.import_module("mediapipe.tasks.python.vision")
             return True
         except ImportError:
             return False
+
+    def _create_face_detector(self, confidence: float):
+        from mediapipe.tasks.python import BaseOptions, vision
+
+        from tools._mediapipe import model_path
+
+        options = vision.FaceDetectorOptions(
+            base_options=BaseOptions(model_asset_path=str(model_path("face_detector"))),
+            running_mode=vision.RunningMode.VIDEO,
+            min_detection_confidence=confidence,
+        )
+        return vision.FaceDetector.create_from_options(options)
 
     def _has_opencv(self) -> bool:
         try:
@@ -187,7 +203,6 @@ class FaceTracker(BaseTool):
         import cv2
         import mediapipe as mp
 
-        mp_face = mp.solutions.face_detection
         cap = cv2.VideoCapture(str(input_path))
 
         video_fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
@@ -203,10 +218,7 @@ class FaceTracker(BaseTool):
         frame_idx = 0
         sampled = 0
 
-        with mp_face.FaceDetection(
-            model_selection=1,  # 1 = full range (up to 5m), 0 = short range (up to 2m)
-            min_detection_confidence=confidence,
-        ) as detector:
+        with self._create_face_detector(confidence) as detector:
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
@@ -215,24 +227,27 @@ class FaceTracker(BaseTool):
                 if frame_idx % sample_interval == 0:
                     sampled += 1
                     rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                    results = detector.process(rgb)
+                    image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                    # VIDEO mode needs strictly increasing timestamps (ms).
+                    results = detector.detect_for_video(image, int(frame_idx * 1000 / video_fps))
 
                     if results.detections:
                         # Use the highest-confidence detection
                         det = max(
                             results.detections,
-                            key=lambda d: d.score[0],
+                            key=lambda d: d.categories[0].score,
                         )
-                        bbox = det.location_data.relative_bounding_box
+                        # Tasks boxes are in pixels; keep the relative output schema.
+                        bbox = det.bounding_box
                         faces_data.append({
                             "frame_index": frame_idx,
                             "timestamp_seconds": round(frame_idx / video_fps, 3),
-                            "confidence": round(det.score[0], 3),
+                            "confidence": round(det.categories[0].score, 3),
                             "bbox": {
-                                "x": round(bbox.xmin, 4),
-                                "y": round(bbox.ymin, 4),
-                                "width": round(bbox.width, 4),
-                                "height": round(bbox.height, 4),
+                                "x": round(bbox.origin_x / video_w, 4),
+                                "y": round(bbox.origin_y / video_h, 4),
+                                "width": round(bbox.width / video_w, 4),
+                                "height": round(bbox.height / video_h, 4),
                             },
                         })
 

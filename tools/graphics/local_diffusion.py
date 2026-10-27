@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import time
+import os
+import gc
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +20,9 @@ from tools.base_tool import (
     ToolStatus,
     ToolTier,
 )
+
+
+DEFAULT_MODEL = "stabilityai/stable-diffusion-xl-base-1.0"
 
 
 class LocalDiffusion(BaseTool):
@@ -65,7 +70,7 @@ class LocalDiffusion(BaseTool):
             "height": {"type": "integer", "default": 512},
             "model": {
                 "type": "string",
-                "default": "stabilityai/stable-diffusion-2-1-base",
+                "default": DEFAULT_MODEL,
             },
             "seed": {"type": "integer"},
             "num_inference_steps": {"type": "integer", "default": 30},
@@ -75,7 +80,7 @@ class LocalDiffusion(BaseTool):
     }
 
     resource_profile = ResourceProfile(
-        cpu_cores=2, ram_mb=8000, vram_mb=4000, disk_mb=5000, network_required=False
+        cpu_cores=2, ram_mb=12000, vram_mb=6000, disk_mb=8000, network_required=False
     )
     retry_policy = RetryPolicy(max_retries=1)
     idempotency_key_fields = ["prompt", "width", "height", "seed", "model"]
@@ -95,6 +100,12 @@ class LocalDiffusion(BaseTool):
     def estimate_runtime(self, inputs: dict[str, Any]) -> float:
         return 30.0  # ~30s on a mid-range GPU
 
+    def _model_source(self, inputs: dict[str, Any]) -> str:
+        model = inputs.get("model") or DEFAULT_MODEL
+        if model == DEFAULT_MODEL:
+            return os.environ.get("LOCAL_DIFFUSION_MODEL_PATH") or model
+        return model
+
     def execute(self, inputs: dict[str, Any]) -> ToolResult:
         if self.get_status() != ToolStatus.AVAILABLE:
             return ToolResult(
@@ -103,7 +114,7 @@ class LocalDiffusion(BaseTool):
             )
 
         import torch
-        from diffusers import StableDiffusionPipeline
+        from diffusers import AutoPipelineForText2Image
 
         start = time.time()
         prompt = inputs["prompt"]
@@ -111,16 +122,24 @@ class LocalDiffusion(BaseTool):
         width = inputs.get("width", 512)
         height = inputs.get("height", 512)
         seed = inputs.get("seed")
-        model_id = inputs.get("model", "stabilityai/stable-diffusion-2-1-base")
+        model_id = inputs.get("model") or DEFAULT_MODEL
         steps = inputs.get("num_inference_steps", 30)
         guidance = inputs.get("guidance_scale", 7.5)
 
+        pipe = None
         try:
             device = "cuda" if torch.cuda.is_available() else "cpu"
             dtype = torch.float16 if device == "cuda" else torch.float32
 
-            pipe = StableDiffusionPipeline.from_pretrained(model_id, torch_dtype=dtype)
-            pipe = pipe.to(device)
+            load_options = {"torch_dtype": dtype}
+            if model_id == DEFAULT_MODEL:
+                load_options["variant"] = "fp16"
+            pipe = AutoPipelineForText2Image.from_pretrained(self._model_source(inputs), **load_options)
+            if device == "cuda":
+                pipe.enable_model_cpu_offload()
+            else:
+                pipe = pipe.to(device)
+            pipe.enable_vae_tiling()
 
             generator = None
             if seed is not None:
@@ -142,6 +161,11 @@ class LocalDiffusion(BaseTool):
 
         except Exception as e:
             return ToolResult(success=False, error=f"Local diffusion generation failed: {e}")
+        finally:
+            del pipe
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
 
         return ToolResult(
             success=True,

@@ -9,6 +9,9 @@ from __future__ import annotations
 
 import json
 import time
+import os
+import subprocess
+import sys
 from pathlib import Path
 from typing import Any, Optional
 
@@ -125,6 +128,12 @@ class Transcriber(BaseTool):
 
         output_dir.mkdir(parents=True, exist_ok=True)
 
+        # CUDA12 CTranslate2 libraries must never replace the CUDA13 libraries
+        # already loaded by PyTorch/Ming/ComfyUI in an agent's Python process.
+        if os.environ.get("WHISPER_CUDA12_ROOT") and os.environ.get("OPENMONTAGE_WHISPER_WORKER") != "1":
+            return self._execute_isolated({**inputs, "input_path": str(input_path.resolve()),
+                                           "output_dir": str(output_dir.resolve())})
+
         try:
             from faster_whisper import WhisperModel
         except ImportError:
@@ -142,7 +151,7 @@ class Transcriber(BaseTool):
         try:
             import ctranslate2
 
-            if ctranslate2.get_cuda_device_count() > 0:
+            if os.environ.get("OPENMONTAGE_WHISPER_FORCE_CPU") != "1" and ctranslate2.get_cuda_device_count() > 0:
                 supported = ctranslate2.get_supported_compute_types("cuda")
                 for candidate in ("float16", "int8_float16", "float32"):
                     if candidate in supported:
@@ -238,6 +247,36 @@ class Transcriber(BaseTool):
             artifacts=[str(output_path)],
             duration_seconds=round(elapsed, 2),
         )
+
+    def _execute_isolated(self, inputs: dict[str, Any]) -> ToolResult:
+        root = Path(os.environ["WHISPER_CUDA12_ROOT"])
+        env = os.environ.copy()
+        env["OPENMONTAGE_WHISPER_WORKER"] = "1"
+        env.pop("OPENMONTAGE_WHISPER_FORCE_CPU", None)
+        env["LD_LIBRARY_PATH"] = os.pathsep.join(str(root / "nvidia" / package / "lib")
+                                                for package in ("cublas", "cudnn"))
+        command = [sys.executable, "-m", "tools.analysis._whisper_worker"]
+        failure = None
+        for cpu in (False, True):
+            if cpu:
+                env["OPENMONTAGE_WHISPER_FORCE_CPU"] = "1"
+                env.pop("LD_LIBRARY_PATH", None)
+            try:
+                process = subprocess.run(command, input=json.dumps(inputs), text=True,
+                                         capture_output=True, env=env, timeout=900,
+                                         cwd=Path(__file__).resolve().parents[2])
+                if process.returncode:
+                    raise RuntimeError(f"Whisper worker exit {process.returncode}: {process.stderr[-1500:]}")
+                payload = json.loads(process.stdout)
+                result = ToolResult(**payload)
+                if result.success:
+                    if failure:
+                        result.data["gpu_fallback_reason"] = failure
+                    return result
+                raise RuntimeError(result.error)
+            except (OSError, subprocess.SubprocessError, ValueError, TypeError, RuntimeError) as exc:
+                failure = str(exc)
+        return ToolResult(success=False, error=f"Isolated Whisper transcription failed: {failure}")
 
     def _apply_diarization(
         self,

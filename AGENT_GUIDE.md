@@ -526,6 +526,17 @@ Before committing to execution, present:
 
 If a user prefers a specific vendor and that tool is available, surface it directly. Do not hide provider choice.
 
+### Owner Production Profile (This Workstation)
+
+Before proposing any video on this machine, read **`docs/owner-production-profile.md`**. It holds the owner's binding defaults:
+- target platforms and export specs;
+- the cloned narration voice;
+- approval gates;
+- manual upload (never post);
+- free and commercially licensed tools only;
+- one GPU engine at a time;
+- which local tools are set up and how to start them.
+
 ### Default Audio Production
 
 The owner's default for future videos is a complete, story-specific sound pass: music, meaningful sound effects, transitions/reveals, and suitable atmosphere. Treat audio as a production layer from the proposal onward. A quiet pad plus a few generic clicks does not automatically satisfy this preference. Adapt the sound language to each subject and its pacing; do not turn the mouse video's score, theme, or cue layout into a fixed template.

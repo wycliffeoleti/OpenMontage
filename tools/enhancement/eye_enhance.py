@@ -1,14 +1,16 @@
-"""Eye enhancement tool using MediaPipe Face Mesh + OpenCV.
+"""Eye enhancement tool using the MediaPipe Tasks face landmarker + OpenCV.
 
 Targets the eye region for talking-head footage:
 - Under-eye dark circle brightening
 - Eye/iris sharpening and brightening
 - Subtle under-eye smoothing
 
-Uses MediaPipe Face Mesh (468 landmarks) to precisely locate eye regions,
-then applies targeted OpenCV adjustments. Processes video frame-by-frame.
+Uses the MediaPipe face landmarker (478 Face Mesh landmarks, iris included)
+to precisely locate eye regions, then applies targeted OpenCV adjustments.
+Processes video frame-by-frame.
 
-Falls back to FFmpeg region-based filters if MediaPipe is not installed.
+Falls back to OpenCV Haar cascades, then FFmpeg filters, if the MediaPipe
+Tasks API is not installed.
 """
 
 from __future__ import annotations
@@ -56,8 +58,9 @@ class EyeEnhance(BaseTool):
 
     dependencies = ["cmd:ffmpeg"]
     install_instructions = (
-        "For best results install MediaPipe and OpenCV:\n"
-        "pip install mediapipe opencv-python numpy\n\n"
+        "For best results install MediaPipe (Tasks API) and OpenCV:\n"
+        "pip install mediapipe opencv-contrib-python numpy\n"
+        "The face landmarker model downloads on first use (MEDIAPIPE_MODELS_DIR).\n\n"
         "Without MediaPipe, falls back to FFmpeg eye-region filter (less precise)."
     )
     agent_skills = ["ffmpeg"]
@@ -125,11 +128,29 @@ class EyeEnhance(BaseTool):
     ]
 
     def _has_mediapipe(self) -> bool:
+        # mediapipe >= 0.10.30 dropped mp.solutions; require the Tasks API.
+        import importlib
+
         try:
-            import mediapipe  # noqa: F401
+            importlib.import_module("mediapipe.tasks.python.vision")
             return True
         except ImportError:
             return False
+
+    def _create_face_landmarker(self):
+        from mediapipe.tasks.python import BaseOptions, vision
+
+        from tools._mediapipe import model_path
+
+        options = vision.FaceLandmarkerOptions(
+            base_options=BaseOptions(model_asset_path=str(model_path("face_landmarker"))),
+            running_mode=vision.RunningMode.VIDEO,
+            num_faces=1,
+            min_face_detection_confidence=0.5,
+            min_face_presence_confidence=0.5,
+            min_tracking_confidence=0.5,
+        )
+        return vision.FaceLandmarker.create_from_options(options)
 
     def _has_opencv(self) -> bool:
         try:
@@ -176,7 +197,7 @@ class EyeEnhance(BaseTool):
     def _enhance_mediapipe(
         self, input_path: Path, output_path: Path, inputs: dict[str, Any]
     ) -> ToolResult:
-        """Full MediaPipe Face Mesh + OpenCV pipeline for precise eye enhancement."""
+        """MediaPipe face landmarker + OpenCV pipeline for precise eye enhancement."""
         import cv2
         import numpy as np
         import mediapipe as mp
@@ -187,8 +208,6 @@ class EyeEnhance(BaseTool):
         sharpen_intensity = inputs.get("sharpen_intensity", 0.3)
         codec_fourcc = inputs.get("codec", "libx264")
         crf = inputs.get("crf", 18)
-
-        mp_face_mesh = mp.solutions.face_mesh
 
         cap = cv2.VideoCapture(str(input_path))
         fps = cap.get(cv2.CAP_PROP_FPS) or 30.0
@@ -205,24 +224,20 @@ class EyeEnhance(BaseTool):
         frames_processed = 0
         frames_enhanced = 0
 
-        with mp_face_mesh.FaceMesh(
-            static_image_mode=False,
-            max_num_faces=1,
-            refine_landmarks=True,  # Enables iris landmarks (468-477)
-            min_detection_confidence=0.5,
-            min_tracking_confidence=0.5,
-        ) as face_mesh:
+        with self._create_face_landmarker() as landmarker:
             while cap.isOpened():
                 ret, frame = cap.read()
                 if not ret:
                     break
 
-                frames_processed += 1
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                results = face_mesh.process(rgb)
+                image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+                # VIDEO mode needs strictly increasing timestamps (ms).
+                results = landmarker.detect_for_video(image, int(frames_processed * 1000 / fps))
+                frames_processed += 1
 
-                if results.multi_face_landmarks:
-                    landmarks = results.multi_face_landmarks[0]
+                if results.face_landmarks:
+                    landmarks = results.face_landmarks[0]
                     frame = self._apply_eye_enhancements(
                         frame, landmarks, width, height,
                         operations, dark_intensity, brighten_intensity, sharpen_intensity,
@@ -259,7 +274,7 @@ class EyeEnhance(BaseTool):
             data={
                 "input": str(input_path),
                 "output": str(output_path),
-                "method": "mediapipe_face_mesh",
+                "method": "mediapipe_face_landmarker",
                 "frames_processed": frames_processed,
                 "frames_enhanced": frames_enhanced,
                 "operations": operations,
@@ -284,12 +299,12 @@ class EyeEnhance(BaseTool):
 
         result = frame.copy()
 
-        # Convert landmarks to pixel coordinates
+        # Convert landmarks (a list of NormalizedLandmark) to pixel coordinates
         def lm_to_px(indices):
             points = []
             for idx in indices:
-                if idx < len(landmarks.landmark):
-                    lm = landmarks.landmark[idx]
+                if idx < len(landmarks):
+                    lm = landmarks[idx]
                     points.append((int(lm.x * width), int(lm.y * height)))
             return np.array(points, dtype=np.int32)
 

@@ -44,6 +44,92 @@ MODELS = {
 }
 
 
+# Release assets for the spandrel backend. RealESRNet_x4plus is published in
+# v0.1.1, not v0.1.0.
+WEIGHT_URLS = {
+    "RealESRGAN_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.0/RealESRGAN_x4plus.pth",
+    "RealESRGAN_x4plus_anime_6B": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.2.4/RealESRGAN_x4plus_anime_6B.pth",
+    "RealESRNet_x4plus": "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.1.1/RealESRNet_x4plus.pth",
+}
+
+
+def _tiled_forward(model, image, scale, tile, tile_pad):
+    """Run ``model`` over padded tiles of an NCHW tensor and stitch the result.
+
+    Each tile carries ``tile_pad`` pixels of context that are cropped away
+    after upscaling, which bounds memory on large frames.
+    """
+    _, channels, height, width = image.shape
+    output = image.new_zeros((image.shape[0], channels, height * scale, width * scale))
+    for top in range(0, height, tile):
+        for left in range(0, width, tile):
+            bottom, right = min(top + tile, height), min(left + tile, width)
+            pad_top, pad_left = max(top - tile_pad, 0), max(left - tile_pad, 0)
+            pad_bottom, pad_right = min(bottom + tile_pad, height), min(right + tile_pad, width)
+            upscaled = model(image[:, :, pad_top:pad_bottom, pad_left:pad_right])
+            crop_top, crop_left = (top - pad_top) * scale, (left - pad_left) * scale
+            output[:, :, top * scale:bottom * scale, left * scale:right * scale] = upscaled[
+                :, :,
+                crop_top:crop_top + (bottom - top) * scale,
+                crop_left:crop_left + (right - left) * scale,
+            ]
+    return output
+
+
+class _SpandrelUpsampler:
+    """RealESRGANer-compatible ``enhance`` built on a spandrel model."""
+
+    backend = "spandrel"
+
+    def __init__(self, descriptor, device: str):
+        import torch
+
+        self.half = device == "cuda" and descriptor.supports_half
+        self.device = torch.device(device)
+        self.model = descriptor.to(self.device).eval()
+        if self.half:
+            self.model.half()
+        self.scale = descriptor.scale
+        # Bound memory on 8GB GPUs too; full-frame x4 of 1080p does not fit.
+        self.tile = 512 if device == "cuda" else 256
+
+    def enhance(self, img, outscale=4):
+        import cv2
+        import numpy as np
+        import torch
+
+        max_range = 65535 if img.dtype == np.uint16 else 255
+        gray = img.ndim == 2
+        alpha = None
+        if gray:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+        elif img.shape[2] == 4:
+            img, alpha = img[:, :, :3], img[:, :, 3]
+
+        rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB).astype(np.float32) / max_range
+        tensor = torch.from_numpy(rgb.transpose(2, 0, 1)).unsqueeze(0).to(self.device)
+        if self.half:
+            tensor = tensor.half()
+        with torch.inference_mode():
+            upscaled = _tiled_forward(self.model, tensor, self.scale, self.tile, tile_pad=10)
+        rgb_out = upscaled.squeeze(0).float().clamp(0, 1).cpu().numpy().transpose(1, 2, 0)
+        output = cv2.cvtColor(rgb_out, cv2.COLOR_RGB2BGR)
+        output = (output * max_range).round().astype(img.dtype)
+
+        if gray:
+            output = cv2.cvtColor(output, cv2.COLOR_BGR2GRAY)
+        if alpha is not None:
+            height, width = output.shape[:2]
+            output = np.dstack([output, cv2.resize(alpha, (width, height), interpolation=cv2.INTER_LINEAR)])
+        if outscale != self.scale:
+            height, width = img.shape[:2]
+            output = cv2.resize(
+                output, (int(width * outscale), int(height * outscale)),
+                interpolation=cv2.INTER_LANCZOS4,
+            )
+        return output, None
+
+
 class Upscale(BaseTool):
     name = "upscale"
     version = "0.1.0"
@@ -55,9 +141,11 @@ class Upscale(BaseTool):
     determinism = Determinism.DETERMINISTIC
     runtime = ToolRuntime.LOCAL_GPU
 
-    dependencies = ["python:realesrgan", "python:torch", "cmd:ffmpeg"]
+    dependencies = ["python:spandrel", "python:torch", "cmd:ffmpeg"]
     install_instructions = (
-        "uv pip install realesrgan torch\n"
+        "uv pip install spandrel torch\n"
+        "spandrel (MIT) loads the Real-ESRGAN weights on current torchvision. The realesrgan\n"
+        "package is used instead when it imports, and is required for face_enhance (with gfpgan).\n"
         "Works on: CUDA (NVIDIA), MPS (Apple Silicon M-series, macOS >= 12.3), CPU fallback.\n"
         "No separate CUDA build needed on macOS — uv pip install torch includes MPS support."
     )
@@ -113,11 +201,20 @@ class Upscale(BaseTool):
     # ------------------------------------------------------------------
 
     def get_status(self) -> ToolStatus:
-        try:
-            import realesrgan  # noqa: F401
-            return ToolStatus.AVAILABLE
-        except ImportError:
-            return ToolStatus.UNAVAILABLE
+        return ToolStatus.AVAILABLE if self._backend() else ToolStatus.UNAVAILABLE
+
+    @staticmethod
+    def _backend() -> str | None:
+        """Prefer realesrgan; use spandrel when basicsr cannot import."""
+        import importlib
+
+        for module in ("realesrgan", "spandrel"):
+            try:
+                importlib.import_module(module)
+                return module
+            except ImportError:
+                continue
+        return None
 
     # ------------------------------------------------------------------
     # Execution
@@ -165,6 +262,7 @@ class Upscale(BaseTool):
                 "scale": scale,
                 "model": model_name,
                 "face_enhance": face_enhance,
+                "backend": self._backend(),
                 "type": "video" if is_video else "image",
                 **result,
             },
@@ -187,7 +285,7 @@ class Upscale(BaseTool):
     ) -> dict[str, Any]:
         import cv2
 
-        upsampler = self._build_upsampler(scale, model_name, denoise_strength, face_enhance)
+        upsampler = self._make_upsampler(scale, model_name, denoise_strength, face_enhance)
 
         img = cv2.imread(str(input_path), cv2.IMREAD_UNCHANGED)
         if img is None:
@@ -214,7 +312,7 @@ class Upscale(BaseTool):
     ) -> dict[str, Any]:
         import cv2
 
-        upsampler = self._build_upsampler(scale, model_name, denoise_strength, face_enhance)
+        upsampler = self._make_upsampler(scale, model_name, denoise_strength, face_enhance)
 
         # Get source frame rate
         fps = self._get_video_fps(input_path)
@@ -261,6 +359,35 @@ class Upscale(BaseTool):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
+
+    def _make_upsampler(
+        self,
+        scale: int,
+        model_name: str,
+        denoise_strength: float,
+        face_enhance: bool,
+    ):
+        if self._backend() == "realesrgan":
+            return self._build_upsampler(scale, model_name, denoise_strength, face_enhance)
+        if face_enhance:
+            raise ValueError(
+                "face_enhance needs realesrgan + gfpgan; the spandrel backend has no face model"
+            )
+        return self._build_spandrel_upsampler(model_name)
+
+    def _build_spandrel_upsampler(self, model_name: str) -> _SpandrelUpsampler:
+        """Load Real-ESRGAN weights with spandrel, downloading them once."""
+        import torch
+        from spandrel import ModelLoader
+
+        weights = Path(torch.hub.get_dir()) / "checkpoints" / f"{model_name}.pth"
+        if not weights.exists():
+            weights.parent.mkdir(parents=True, exist_ok=True)
+            torch.hub.download_url_to_file(WEIGHT_URLS[model_name], str(weights))
+
+        from tools.video._shared import get_torch_device as _get_device
+        descriptor = ModelLoader().load_from_file(weights)
+        return _SpandrelUpsampler(descriptor, _get_device())
 
     def _build_upsampler(
         self,
